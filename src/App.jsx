@@ -406,9 +406,23 @@ function App() {
           <code>dmaIds[]=807</code>.
         </p>
         <form onSubmit={handleSubmit} className="form">
-          <label className="span-2">
-            <span>Bearer Token</span>
+          <div className="span-2 token-field">
+            <div className="token-label-row">
+              <label htmlFor="bearer-token-input">Bearer Token</label>
+              <button
+                type="button"
+                className="info-icon-button"
+                aria-label="Bearer token help"
+              >
+                <span aria-hidden="true">i</span>
+                <span className="info-tooltip-content" role="tooltip">
+                  Get this from a real Levels.fyi browser request: open DevTools, inspect a request
+                  to the salary API, and copy the value of the `Authorization` header.
+                </span>
+              </button>
+            </div>
             <input
+              id="bearer-token-input"
               className="input-token"
               type="password"
               value={formState.bearerToken}
@@ -418,7 +432,7 @@ function App() {
               placeholder="Paste Bearer token (without or with Bearer prefix)"
               required
             />
-          </label>
+          </div>
           <label>
             <span>Company</span>
             <input

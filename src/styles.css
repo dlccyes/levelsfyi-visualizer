@@ -59,6 +59,23 @@ body {
   grid-column: 1 / -1;
 }
 
+.token-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.token-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+}
+
+.token-label-row label {
+  display: inline;
+}
+
 .input-token {
   width: min(100%, 520px);
 }
@@ -75,9 +92,57 @@ label {
   min-width: 0;
 }
 
+.info-icon-button {
+  all: unset;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid #94a3b8;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  background: #f8fafc;
+  line-height: 1;
+}
+
+.info-tooltip-content {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: min(360px, 85vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.info-icon-button:hover .info-tooltip-content,
+.info-icon-button:focus-visible .info-tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 input,
 select,
-button {
+button:not(.info-icon-button) {
   width: 100%;
   height: 40px;
   border-radius: 8px;
@@ -87,7 +152,7 @@ button {
   min-width: 0;
 }
 
-button {
+button:not(.info-icon-button) {
   background: #111827;
   color: #fff;
   cursor: pointer;
@@ -102,7 +167,7 @@ button {
   border: 1px solid #93c5fd;
 }
 
-button:disabled {
+button:not(.info-icon-button):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
