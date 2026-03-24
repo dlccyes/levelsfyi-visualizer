@@ -3,7 +3,20 @@ import CryptoJS from "crypto-js";
 import pako from "pako";
 import PropTypes from "prop-types";
 
-const LOCATION_OPTIONS = [{ label: "SF Bay Area", value: "807" }];
+const LOCATION_OPTIONS = [
+  { label: "Any", value: "" },
+  { label: "SF Bay Area", value: "807" },
+];
+const COMPANY_OPTIONS = [
+  "amazon",
+  "apple",
+  "bytedance",
+  "google",
+  "hudson-river-trading",
+  "jane-street",
+  "meta",
+  "microsoft",
+];
 
 const STATIC_QUERY_PARAMS = {
   limit: "50",
@@ -113,7 +126,9 @@ function buildRequestUrl(formState) {
     companySlug,
     ...STATIC_QUERY_PARAMS,
   });
-  params.append("dmaIds[]", formState.dmaId);
+  if (formState.dmaId) {
+    params.append("dmaIds[]", formState.dmaId);
+  }
   const url = isLocalhost()
     ? new URL(LEVELS_API_PROXY_PATH, window.location.origin)
     : new URL(LEVELS_API_PATH, LEVELS_API_PROXY_ORIGIN);
@@ -265,7 +280,7 @@ function App() {
     company: "bytedance",
     minYearsOfExp: "2",
     maxYearsOfExp: "4",
-    dmaId: LOCATION_OPTIONS[0].value,
+    dmaId: "",
   });
   const [rawResponse, setRawResponse] = useState(null);
   const [decodedResponse, setDecodedResponse] = useState(null);
@@ -412,8 +427,7 @@ function App() {
       <section className="panel">
         <h1>Levels.fyi Visualizer</h1>
         <p>
-          Enter company and YoE range. Location is currently restricted to SF Bay Area and maps to
-          {" "}
+          Enter company and YoE range. Location is optional; selecting SF Bay Area maps to{" "}
           <code>dmaIds[]=807</code>.
         </p>
         <form onSubmit={handleSubmit} className="form">
@@ -447,10 +461,16 @@ function App() {
           <label>
             <span>Company</span>
             <input
+              list="company-options"
               value={formState.company}
               onChange={(event) => setFormState((prev) => ({ ...prev, company: event.target.value }))}
               required
             />
+            <datalist id="company-options">
+              {COMPANY_OPTIONS.map((company) => (
+                <option key={company} value={company} />
+              ))}
+            </datalist>
           </label>
           <label>
             <span>Min YoE</span>
@@ -558,7 +578,7 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>Sample Rows</h2>
+            <h2>Records</h2>
             <SampleRowsTable
               rows={sortedSampleRows}
               sortField={sampleSort.field}
