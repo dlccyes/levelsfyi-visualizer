@@ -5,10 +5,18 @@ import PropTypes from "prop-types";
 
 const LOCATION_OPTIONS = [
   { label: "Any", value: "" },
-  { label: "Austin", value: "635" },
-  { label: "NYC", value: "501" },
-  { label: "Seattle", value: "819" },
-  { label: "SF Bay Area", value: "807" },
+  { label: "SF Bay Area", value: "807", dmaId: "807" },
+  { label: "Seattle", value: "819", dmaId: "819" },
+  { label: "NYC", value: "501", dmaId: "501" },
+  { label: "Austin", value: "635", dmaId: "635" },
+  { label: "Singapore", value: "country-219", countryId: "219" },
+  { label: "Australia", value: "country-14", countryId: "14" },
+  { label: "Canada", value: "country-43", countryId: "43" },
+  { label: "Switzerland", value: "country-234", countryId: "234" },
+  { label: "UK", value: "country-253", countryId: "253" },
+  { label: "Ireland", value: "country-117", countryId: "117" },
+  { label: "Japan", value: "country-122", countryId: "122" },
+  { label: "Taiwan", value: "search-taiwan", searchText: "Taiwan" },
 ];
 const COMPANY_OPTIONS = [
   "airbnb",
@@ -192,12 +200,19 @@ function buildRequestUrl(formState, company, offset = 0) {
     offset: String(offset),
     ...STATIC_QUERY_PARAMS,
   });
-  if (formState.dmaId) {
-    params.append("dmaIds[]", formState.dmaId);
+  const selectedLocationOption = LOCATION_OPTIONS.find((option) => option.value === formState.dmaId);
+  if (selectedLocationOption?.dmaId) {
+    params.append("dmaIds[]", selectedLocationOption.dmaId);
   }
-  const searchText = formState.locationSearchText.trim();
-  if (searchText) {
-    params.append("searchText", searchText);
+  if (selectedLocationOption?.countryId) {
+    params.append("countryIds[]", selectedLocationOption.countryId);
+  } else if (selectedLocationOption?.searchText) {
+    params.append("searchText", selectedLocationOption.searchText);
+  } else {
+    const searchText = formState.locationSearchText.trim();
+    if (searchText) {
+      params.append("searchText", searchText);
+    }
   }
   const url = isLocalhost()
     ? new URL(LEVELS_API_PROXY_PATH, globalThis.location.origin)
@@ -478,8 +493,8 @@ function buildEntityId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function getLocationLabelByDmaId(dmaId) {
-  const matchedOption = LOCATION_OPTIONS.find((option) => option.value === dmaId);
+function getLocationLabelByValue(locationValue) {
+  const matchedOption = LOCATION_OPTIONS.find((option) => option.value === locationValue);
   return matchedOption?.label || "Unknown";
 }
 
@@ -587,6 +602,7 @@ function App() {
   const [selectedPresetKey, setSelectedPresetKey] = useState("");
   const isCompareCompaniesMode = queryMode === "compare-companies";
   const isCompareLocationsMode = queryMode === "compare-locations";
+  const selectedLocationOption = LOCATION_OPTIONS.find((option) => option.value === formState.dmaId);
 
   const isSingleCompanyResult = companyResults.length === 1;
   const hasMultipleCompanyResults = companyResults.length > 1;
@@ -758,8 +774,12 @@ function App() {
           throw new Error("At least one location is required.");
         }
 
-        for (const dmaId of selectedLocations) {
-          const scopedFormState = { ...formState, dmaId, locationSearchText: "" };
+        for (const locationValue of selectedLocations) {
+          const scopedFormState = {
+            ...formState,
+            dmaId: locationValue,
+            locationSearchText: "",
+          };
           const companyResult = await fetchCompanyResult(
             scopedFormState,
             bearerToken,
@@ -768,8 +788,8 @@ function App() {
           );
           nextCompanyResults.push({
             ...companyResult,
-            seriesLabel: getLocationLabelByDmaId(dmaId),
-            groupKey: dmaId,
+            seriesLabel: getLocationLabelByValue(locationValue),
+            groupKey: locationValue,
           });
         }
       } else if (isCompareCompaniesMode) {
@@ -1019,6 +1039,7 @@ function App() {
                   onChange={(event) =>
                     setFormState((prev) => ({ ...prev, locationSearchText: event.target.value }))
                   }
+                  disabled={Boolean(selectedLocationOption?.countryId || selectedLocationOption?.searchText)}
                   placeholder="e.g. San Jose"
                 />
               </label>
@@ -1046,7 +1067,7 @@ function App() {
 
       {hasMultipleCompanyResults && mergedMultiCompanyPlot && (
         <section className="panel">
-          <h2>TC Distribution {isCompareLocationsMode ? "(Combined by Location)" : "(Combined)"}</h2>
+          <h2>TC Distribution (Head 2 Head)</h2>
           <MultiCompanyBoxPlot plot={mergedMultiCompanyPlot} />
         </section>
       )}
