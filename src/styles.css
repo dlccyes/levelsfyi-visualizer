@@ -80,6 +80,20 @@ body {
   align-items: center;
 }
 
+.preset-row {
+  grid-template-columns: max-content auto;
+  justify-content: start;
+}
+
+.preset-select {
+  width: 140px;
+  min-width: 140px;
+}
+
+.preset-row .company-row-action {
+  min-width: 120px;
+}
+
 .company-row-action {
   width: auto !important;
   min-width: 106px;

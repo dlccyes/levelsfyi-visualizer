@@ -11,14 +11,45 @@ const LOCATION_OPTIONS = [
   { label: "SF Bay Area", value: "807" },
 ];
 const COMPANY_OPTIONS = [
+  "airbnb",
   "amazon",
   "apple",
   "bytedance",
+  "citadel",
   "google",
   "hudson-river-trading",
   "jane-street",
+  "jump-trading",
   "meta",
   "microsoft",
+  "netflix",
+  "openai",
+  "snowflake",
+  "uber",
+];
+const COMPANY_PRESETS = [
+  {
+    key: "big-tech",
+    label: "Big Tech",
+    dmaId: "807",
+    companies: [
+      "meta",
+      "amazon",
+      "apple",
+      "google",
+      "netflix",
+      "bytedance",
+      "airbnb",
+      "uber",
+      "microsoft",
+    ],
+  },
+  {
+    key: "quant",
+    label: "Quant",
+    dmaId: "501",
+    companies: ["jane-street", "citadel", "hudson-river-trading", "jump-trading"],
+  },
 ];
 const LIMIT_OPTIONS = ["50", "100", "150", "200", "250"];
 const API_PAGE_LIMIT = 50;
@@ -537,6 +568,7 @@ function App() {
     direction: "desc",
   });
   const [collapsedCompanies, setCollapsedCompanies] = useState({});
+  const [selectedPresetKey, setSelectedPresetKey] = useState("");
 
   const isSingleCompanyResult = companyResults.length === 1;
   const hasMultipleCompanyResults = companyResults.length > 1;
@@ -587,6 +619,26 @@ function App() {
     setFormState((prev) => ({
       ...prev,
       companies: [...prev.companies, { id: companyId, value: "" }],
+    }));
+  }
+
+  function applyPreset() {
+    if (!selectedPresetKey) {
+      return;
+    }
+
+    const selectedPreset = COMPANY_PRESETS.find((preset) => preset.key === selectedPresetKey);
+    if (!selectedPreset) {
+      return;
+    }
+
+    setFormState((prev) => ({
+      ...prev,
+      dmaId: selectedPreset.dmaId,
+      companies: selectedPreset.companies.map((company) => ({
+        id: `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        value: company,
+      })),
     }));
   }
 
@@ -686,7 +738,7 @@ function App() {
     <main className="page">
       <section className="panel">
         <h1>Levels.fyi Visualizer</h1>
-        <p>Select how many recent records to fetch (loaded in pages of 50).</p>
+        <p>Feeling levels.fyi frontend is underpowered? Quickly search, visualize, and compare TCs with this simple tool!</p>
         <form onSubmit={handleSubmit} className="form">
           <div className="span-2 token-field">
             <div className="token-label-row">
@@ -717,6 +769,28 @@ function App() {
           </div>
           <div className="company-list-field">
             <span>Companies</span>
+            <div className="company-row preset-row">
+              <select
+                className="preset-select"
+                value={selectedPresetKey}
+                onChange={(event) => setSelectedPresetKey(event.target.value)}
+              >
+                <option value="">Select preset</option>
+                {COMPANY_PRESETS.map((preset) => (
+                  <option key={preset.key} value={preset.key}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="company-row-action"
+                onClick={applyPreset}
+                disabled={!selectedPresetKey}
+              >
+                Apply Preset
+              </button>
+            </div>
             {formState.companies.map((company, index) => (
               <div key={company.id} className="company-row">
                 <input
