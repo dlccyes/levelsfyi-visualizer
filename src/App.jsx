@@ -536,6 +536,7 @@ function App() {
     field: "",
     direction: "desc",
   });
+  const [collapsedCompanies, setCollapsedCompanies] = useState({});
 
   const isSingleCompanyResult = companyResults.length === 1;
   const hasMultipleCompanyResults = companyResults.length > 1;
@@ -601,11 +602,19 @@ function App() {
     });
   }
 
+  function toggleCompanyCollapse(companyKey) {
+    setCollapsedCompanies((prev) => ({
+      ...prev,
+      [companyKey]: !prev[companyKey],
+    }));
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setRequestError("");
     setIsLoading(true);
     setCompanyResults([]);
+    setCollapsedCompanies({});
 
     try {
       const bearerToken = formState.bearerToken.trim();
@@ -811,75 +820,46 @@ function App() {
           <MultiCompanyBoxPlot plot={mergedMultiCompanyPlot} />
         </section>
       )}
+      {isSingleCompanyResult && singleCompanyResult && (
+        <section className="panel">
+          <h2>TC Distribution</h2>
+          <BoxPlot plot={singleCompanyResult.metrics.plot} />
+        </section>
+      )}
 
       {companyResults.length > 0 &&
         companyResults.map((result, resultIndex) => (
+        (() => {
+          const companyKey = `${result.companySlug}-${resultIndex}`;
+          const isCollapsed = Boolean(collapsedCompanies[companyKey]);
+          return (
         <section
           key={`${result.companySlug}-${result.metrics.total}-${result.metrics.count}`}
-          className="company-results-group"
-          style={{ "--company-color": getCompanySeriesColor(resultIndex) }}
+          className={`company-results-group ${hasMultipleCompanyResults ? "company-results-group-accent" : ""}`}
+          style={
+            hasMultipleCompanyResults
+              ? { "--company-color": getCompanySeriesColor(resultIndex) }
+              : undefined
+          }
         >
-          <section className="panel">
-            <h2>{result.companySlug}</h2>
-          </section>
-          <section className="grid metrics">
-            <article className="panel metric">
-              <h2>Average TC</h2>
-              <div>{formatUSD(result.metrics.avgTC)}</div>
-            </article>
-            <article className="panel metric">
-              <h2>Q1</h2>
-              <div>{formatUSD(result.metrics.q1)}</div>
-            </article>
-            <article className="panel metric">
-              <h2>Median</h2>
-              <div>{formatUSD(result.metrics.median)}</div>
-            </article>
-            <article className="panel metric">
-              <h2>Q3</h2>
-              <div>{formatUSD(result.metrics.q3)}</div>
-            </article>
-            <article className="panel metric">
-              <h2>Min / Max TC</h2>
-              <div>
-                {formatUSD(result.metrics.minTC)} / {formatUSD(result.metrics.maxTC)}
-              </div>
-            </article>
-            <article className="panel metric">
-              <h2>Rows Used</h2>
-              <div>{formatInt(result.metrics.count)}</div>
-            </article>
-            <article className="panel metric">
-              <h2>Response Total</h2>
-              <div>{formatInt(result.metrics.total)}</div>
-            </article>
-          </section>
-
-          {!hasMultipleCompanyResults && (
-            <section className="panel">
-              <h2>TC Distribution</h2>
-              <BoxPlot plot={result.metrics.plot} />
-            </section>
+          {hasMultipleCompanyResults ? (
+            <>
+              <section className="panel company-collapse-header">
+                <button
+                  type="button"
+                  className="company-collapse-toggle"
+                  onClick={() => toggleCompanyCollapse(companyKey)}
+                >
+                  <span>{isCollapsed ? "▸" : "▾"} {result.companySlug}</span>
+                </button>
+              </section>
+              {!isCollapsed && (
+                <CompanySummarySections result={result} />
+              )}
+            </>
+          ) : (
+            <CompanySummarySections result={result} />
           )}
-
-          <section className="grid">
-            <article className="panel">
-              <h2>Top Levels</h2>
-              <SummaryTable title="Level" rows={result.metrics.levelSummary} />
-            </article>
-            <article className="panel">
-              <h2>Top Locations</h2>
-              <SummaryTable title="Location" rows={result.metrics.locationSummary} />
-            </article>
-            <article className="panel">
-              <h2>Top Gender</h2>
-              <SummaryTable title="Gender" rows={result.metrics.genderSummary} />
-            </article>
-            <article className="panel">
-              <h2>Top Ethnicity</h2>
-              <SummaryTable title="Ethnicity" rows={result.metrics.ethnicitySummary} />
-            </article>
-          </section>
 
           {isSingleCompanyResult && (
             <>
@@ -956,6 +936,8 @@ function App() {
             </>
           )}
         </section>
+          );
+        })()
       ))}
     </main>
   );
@@ -1145,6 +1127,64 @@ function MultiCompanyBoxPlot({ plot }) {
         <line className="plot-axis" x1={plot.axisStartX} y1={plot.axisY} x2={plot.axisEndX} y2={plot.axisY} />
       </svg>
     </div>
+  );
+}
+
+function CompanySummarySections({ result }) {
+  return (
+    <>
+      <section className="grid metrics">
+        <article className="panel metric">
+          <h2>Average TC</h2>
+          <div>{formatUSD(result.metrics.avgTC)}</div>
+        </article>
+        <article className="panel metric">
+          <h2>Q1</h2>
+          <div>{formatUSD(result.metrics.q1)}</div>
+        </article>
+        <article className="panel metric">
+          <h2>Median</h2>
+          <div>{formatUSD(result.metrics.median)}</div>
+        </article>
+        <article className="panel metric">
+          <h2>Q3</h2>
+          <div>{formatUSD(result.metrics.q3)}</div>
+        </article>
+        <article className="panel metric">
+          <h2>Min / Max TC</h2>
+          <div>
+            {formatUSD(result.metrics.minTC)} / {formatUSD(result.metrics.maxTC)}
+          </div>
+        </article>
+        <article className="panel metric">
+          <h2>Rows Used</h2>
+          <div>{formatInt(result.metrics.count)}</div>
+        </article>
+        <article className="panel metric">
+          <h2>Response Total</h2>
+          <div>{formatInt(result.metrics.total)}</div>
+        </article>
+      </section>
+
+      <section className="grid">
+        <article className="panel">
+          <h2>Top Levels</h2>
+          <SummaryTable title="Level" rows={result.metrics.levelSummary} />
+        </article>
+        <article className="panel">
+          <h2>Top Locations</h2>
+          <SummaryTable title="Location" rows={result.metrics.locationSummary} />
+        </article>
+        <article className="panel">
+          <h2>Top Gender</h2>
+          <SummaryTable title="Gender" rows={result.metrics.genderSummary} />
+        </article>
+        <article className="panel">
+          <h2>Top Ethnicity</h2>
+          <SummaryTable title="Ethnicity" rows={result.metrics.ethnicitySummary} />
+        </article>
+      </section>
+    </>
   );
 }
 
@@ -1363,6 +1403,25 @@ MultiCompanyBoxPlot.propTypes = {
     ).isRequired,
     axisStartX: PropTypes.number.isRequired,
     axisEndX: PropTypes.number.isRequired,
+  }).isRequired,
+};
+
+CompanySummarySections.propTypes = {
+  result: PropTypes.shape({
+    metrics: PropTypes.shape({
+      avgTC: PropTypes.number.isRequired,
+      q1: PropTypes.number.isRequired,
+      median: PropTypes.number.isRequired,
+      q3: PropTypes.number.isRequired,
+      minTC: PropTypes.number.isRequired,
+      maxTC: PropTypes.number.isRequired,
+      count: PropTypes.number.isRequired,
+      total: PropTypes.number,
+      levelSummary: PropTypes.array.isRequired,
+      locationSummary: PropTypes.array.isRequired,
+      genderSummary: PropTypes.array.isRequired,
+      ethnicitySummary: PropTypes.array.isRequired,
+    }).isRequired,
   }).isRequired,
 };
 
