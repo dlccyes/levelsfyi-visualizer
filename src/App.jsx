@@ -120,14 +120,24 @@ function buildHeaders(token) {
 }
 
 function buildSampleRows(rows) {
-  return rows.slice(0, 10).map((row) => ({
+  return rows.map((row, index) => {
+    const parsedOfferDate = Date.parse(row.offerDate || "");
+    const hasValidOfferDate = Number.isFinite(parsedOfferDate);
+
+    return {
+    id: `${row.company || "unknown"}-${row.level || "unknown"}-${row.location || "unknown"}-${index}`,
     company: row.company || "",
     level: row.level || "",
-    yoe: row.yearsOfExperience,
+    yoe: Number(row.yearsOfExperience),
     location: row.location || "",
+    totalCompensationValue: Number(row.totalCompensation),
+    baseSalaryValue: Number(row.baseSalary),
     totalCompensation: formatUSD(row.totalCompensation),
     baseSalary: formatUSD(row.baseSalary),
-  }));
+    offerDate: hasValidOfferDate ? new Date(parsedOfferDate).toLocaleString() : "N/A",
+    offerDateValue: hasValidOfferDate ? parsedOfferDate : Number.NEGATIVE_INFINITY,
+    };
+  });
 }
 
 function buildTcDistributionPlot(tcValues) {
@@ -217,6 +227,27 @@ function buildTcDistributionPlot(tcValues) {
   };
 }
 
+function getCopyButtonLabel(status) {
+  if (status === "loading") return "Copying...";
+  if (status === "success") return "Copied!";
+  return "Copy JSON";
+}
+
+function compareValues(a, b, direction) {
+  if (a === b) return 0;
+  const left = a == null ? "" : a;
+  const right = b == null ? "" : b;
+
+  let result = 0;
+  if (typeof left === "number" && typeof right === "number") {
+    result = left - right;
+  } else {
+    result = String(left).localeCompare(String(right), undefined, { sensitivity: "base" });
+  }
+
+  return direction === "asc" ? result : -result;
+}
+
 function App() {
   const [formState, setFormState] = useState({
     bearerToken: "",
@@ -229,6 +260,23 @@ function App() {
   const [decodedResponse, setDecodedResponse] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [actionStatus, setActionStatus] = useState({
+    decodedCopy: "idle",
+    decodedOpen: "idle",
+    rawCopy: "idle",
+    rawOpen: "idle",
+  });
+  const [sampleSort, setSampleSort] = useState({
+    field: "totalCompensationValue",
+    direction: "desc",
+  });
+
+  function setTransientActionStatus(key, value) {
+    setActionStatus((prev) => ({ ...prev, [key]: value }));
+    globalThis.setTimeout(() => {
+      setActionStatus((prev) => ({ ...prev, [key]: "idle" }));
+    }, 1200);
+  }
 
   const computed = useMemo(() => {
     if (!decodedResponse) return null;
@@ -266,6 +314,25 @@ function App() {
     };
   }, [decodedResponse]);
 
+  const sortedSampleRows = useMemo(() => {
+    if (!computed) return [];
+    const rows = [...computed.sampleRows];
+    rows.sort((a, b) => compareValues(a[sampleSort.field], b[sampleSort.field], sampleSort.direction));
+    return rows;
+  }, [computed, sampleSort]);
+
+  function toggleSampleSort(field) {
+    setSampleSort((prev) => {
+      if (prev.field === field) {
+        return {
+          field,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return { field, direction: "desc" };
+    });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setRequestError("");
@@ -293,6 +360,39 @@ function App() {
       setRequestError(error instanceof Error ? error.message : "Unexpected request error.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  function openDecodedJsonInNewPage() {
+    if (!decodedResponse) return;
+    const jsonText = JSON.stringify(decodedResponse, null, 2);
+    const blob = new Blob([jsonText], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setTransientActionStatus("decodedOpen", "success");
+  }
+
+  function openRawApiJsonInNewPage() {
+    if (!rawResponse) return;
+    const jsonText = JSON.stringify(rawResponse, null, 2);
+    const blob = new Blob([jsonText], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setTransientActionStatus("rawOpen", "success");
+  }
+
+  async function copyJsonToClipboard(value, key) {
+    if (!value) return;
+    const jsonText = JSON.stringify(value, null, 2);
+    try {
+      setActionStatus((prev) => ({ ...prev, [key]: "loading" }));
+      await navigator.clipboard.writeText(jsonText);
+      setTransientActionStatus(key, "success");
+    } catch (error) {
+      setTransientActionStatus(key, "error");
+      setRequestError(error instanceof Error ? error.message : "Failed to copy JSON.");
     }
   }
 
@@ -434,16 +534,61 @@ function App() {
 
           <section className="panel">
             <h2>Sample Rows</h2>
-            <SampleRowsTable rows={computed.sampleRows} />
+            <SampleRowsTable
+              rows={sortedSampleRows}
+              sortField={sampleSort.field}
+              sortDirection={sampleSort.direction}
+              onToggleSort={toggleSampleSort}
+            />
           </section>
 
           <section className="panel">
-            <h2>Decoded JSON</h2>
+            <div className="panel-header">
+              <h2>Decoded JSON</h2>
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => copyJsonToClipboard(decodedResponse, "decodedCopy")}
+                  disabled={actionStatus.decodedCopy === "loading"}
+                >
+                  {getCopyButtonLabel(actionStatus.decodedCopy)}
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={openDecodedJsonInNewPage}
+                  disabled={actionStatus.decodedOpen !== "idle"}
+                >
+                  {actionStatus.decodedOpen === "success" ? "Opened!" : "Open Raw JSON"}
+                </button>
+              </div>
+            </div>
             <pre>{JSON.stringify(decodedResponse, null, 2)}</pre>
           </section>
 
           <section className="panel">
-            <h2>Raw API Response</h2>
+            <div className="panel-header">
+              <h2>Raw API Response</h2>
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => copyJsonToClipboard(rawResponse, "rawCopy")}
+                  disabled={actionStatus.rawCopy === "loading"}
+                >
+                  {getCopyButtonLabel(actionStatus.rawCopy)}
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={openRawApiJsonInNewPage}
+                  disabled={actionStatus.rawOpen !== "idle"}
+                >
+                  {actionStatus.rawOpen === "success" ? "Opened!" : "Open Raw JSON"}
+                </button>
+              </div>
+            </div>
             <pre>{JSON.stringify(rawResponse, null, 2)}</pre>
           </section>
 
@@ -566,26 +711,69 @@ function SummaryTable({ title, rows }) {
   );
 }
 
-function SampleRowsTable({ rows }) {
+function SampleRowsTable({ rows, sortField, sortDirection, onToggleSort }) {
+  function getSortLabel(field) {
+    if (sortField !== field) return "↕";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
   return (
     <table>
       <thead>
         <tr>
-          <th>Company</th>
-          <th>Level</th>
-          <th>YoE</th>
-          <th>Location</th>
-          <th>Total Comp</th>
-          <th>Base</th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => onToggleSort("company")}>
+              Company {getSortLabel("company")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => onToggleSort("level")}>
+              Level {getSortLabel("level")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => onToggleSort("yoe")}>
+              YoE {getSortLabel("yoe")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => onToggleSort("location")}>
+              Location {getSortLabel("location")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => onToggleSort("offerDateValue")}>
+              Offer Date {getSortLabel("offerDateValue")}
+            </button>
+          </th>
+          <th>
+            <button
+              type="button"
+              className="table-sort-button"
+              onClick={() => onToggleSort("totalCompensationValue")}
+            >
+              Total Comp {getSortLabel("totalCompensationValue")}
+            </button>
+          </th>
+          <th>
+            <button
+              type="button"
+              className="table-sort-button"
+              onClick={() => onToggleSort("baseSalaryValue")}
+            >
+              Base {getSortLabel("baseSalaryValue")}
+            </button>
+          </th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={`${row.company}-${row.level}-${row.yoe}-${row.location}`}>
+          <tr key={row.id}>
             <td>{row.company}</td>
             <td>{row.level}</td>
-            <td>{row.yoe}</td>
+            <td>{Number.isFinite(row.yoe) ? row.yoe : "N/A"}</td>
             <td>{row.location}</td>
+            <td>{row.offerDate}</td>
             <td>{row.totalCompensation}</td>
             <td>{row.baseSalary}</td>
           </tr>
@@ -643,14 +831,22 @@ SummaryTable.propTypes = {
 SampleRowsTable.propTypes = {
   rows: PropTypes.arrayOf(
     PropTypes.shape({
+      id: PropTypes.string.isRequired,
       company: PropTypes.string.isRequired,
       level: PropTypes.string.isRequired,
-      yoe: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      yoe: PropTypes.number,
       location: PropTypes.string.isRequired,
+      offerDate: PropTypes.string.isRequired,
+      offerDateValue: PropTypes.number.isRequired,
+      totalCompensationValue: PropTypes.number,
+      baseSalaryValue: PropTypes.number,
       totalCompensation: PropTypes.string.isRequired,
       baseSalary: PropTypes.string.isRequired,
     }),
   ).isRequired,
+  sortField: PropTypes.string.isRequired,
+  sortDirection: PropTypes.oneOf(["asc", "desc"]).isRequired,
+  onToggleSort: PropTypes.func.isRequired,
 };
 
 export default App;
