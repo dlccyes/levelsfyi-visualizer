@@ -20,9 +20,10 @@ const COMPANY_OPTIONS = [
   "meta",
   "microsoft",
 ];
+const LIMIT_OPTIONS = ["50", "100", "150", "200", "250"];
+const API_PAGE_LIMIT = 50;
 
 const STATIC_QUERY_PARAMS = {
-  limit: "50",
   sortBy: "offer_date",
   sortOrder: "DESC",
   jobFamilySlug: "software-engineer",
@@ -34,7 +35,7 @@ const LEVELS_API_PROXY_ORIGIN = "https://levelsfyi-proxy.derricken968.workers.de
 const LEVELS_API_PATH = "/v3/salary/search";
 
 function isLocalhost() {
-  const host = window.location.hostname;
+  const host = globalThis.location.hostname;
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
@@ -132,7 +133,7 @@ function summarizeField(rows, field, limit = 8) {
     }));
 }
 
-function buildRequestUrl(formState) {
+function buildRequestUrl(formState, offset = 0) {
   const companySlug = formState.company
     .trim()
     .toLowerCase()
@@ -141,16 +142,34 @@ function buildRequestUrl(formState) {
     minYearsOfExp: String(formState.minYearsOfExp),
     maxYearsOfExp: String(formState.maxYearsOfExp),
     companySlug,
+    limit: String(API_PAGE_LIMIT),
+    offset: String(offset),
     ...STATIC_QUERY_PARAMS,
   });
   if (formState.dmaId) {
     params.append("dmaIds[]", formState.dmaId);
   }
+  const searchText = formState.locationSearchText.trim();
+  if (searchText) {
+    params.append("searchText", searchText);
+  }
   const url = isLocalhost()
-    ? new URL(LEVELS_API_PROXY_PATH, window.location.origin)
+    ? new URL(LEVELS_API_PROXY_PATH, globalThis.location.origin)
     : new URL(LEVELS_API_PATH, LEVELS_API_PROXY_ORIGIN);
   url.search = params.toString();
   return url.toString();
+}
+
+function mergeDecodedPages(decodedPages, rowLimit) {
+  if (!decodedPages.length) {
+    return { rows: [] };
+  }
+
+  const mergedRows = decodedPages.flatMap((page) => (Array.isArray(page.rows) ? page.rows : []));
+  return {
+    ...decodedPages[0],
+    rows: mergedRows.slice(0, rowLimit),
+  };
 }
 
 function buildHeaders(token) {
@@ -298,6 +317,8 @@ function App() {
     minYearsOfExp: "2",
     maxYearsOfExp: "4",
     dmaId: "807",
+    locationSearchText: "",
+    limit: "50",
   });
   const [rawResponse, setRawResponse] = useState(null);
   const [decodedResponse, setDecodedResponse] = useState(null);
@@ -390,16 +411,42 @@ function App() {
         throw new Error("Bearer token is required.");
       }
 
-      const url = buildRequestUrl(formState);
-      const response = await fetch(url, { headers: buildHeaders(bearerToken) });
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}.`);
+      const selectedLimit = Number(formState.limit);
+      const pageRawResponses = [];
+      const decodedPages = [];
+
+      let offset = 0;
+      let fetchedRows = 0;
+      while (fetchedRows < selectedLimit) {
+        const url = buildRequestUrl(formState, offset);
+        const response = await fetch(url, { headers: buildHeaders(bearerToken) });
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}.`);
+        }
+
+        const responseJson = await response.json();
+        const decoded = decodeLevelsPayload(responseJson);
+        const pageRows = Array.isArray(decoded.rows) ? decoded.rows : [];
+        const reportedTotal = Number(decoded.total);
+
+        pageRawResponses.push(responseJson);
+        decodedPages.push(decoded);
+        fetchedRows += pageRows.length;
+
+        const reachedSelectedLimit = fetchedRows >= selectedLimit;
+        const reachedEndOfResults = pageRows.length < API_PAGE_LIMIT;
+        const reachedReportedTotal =
+          Number.isFinite(reportedTotal) && offset + pageRows.length >= reportedTotal;
+        if (reachedSelectedLimit || reachedEndOfResults || reachedReportedTotal) {
+          break;
+        }
+
+        offset += API_PAGE_LIMIT;
       }
 
-      const responseJson = await response.json();
-      const decoded = decodeLevelsPayload(responseJson);
-      setRawResponse(responseJson);
-      setDecodedResponse(decoded);
+      const mergedDecodedResponse = mergeDecodedPages(decodedPages, selectedLimit);
+      setRawResponse(pageRawResponses.length === 1 ? pageRawResponses[0] : pageRawResponses);
+      setDecodedResponse(mergedDecodedResponse);
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : "Unexpected request error.");
     } finally {
@@ -444,7 +491,7 @@ function App() {
     <main className="page">
       <section className="panel">
         <h1>Levels.fyi Visualizer</h1>
-        <p>Only the most recent 50 records are fetched.</p>
+        <p>Select how many recent records to fetch (loaded in pages of 50).</p>
         <form onSubmit={handleSubmit} className="form">
           <div className="span-2 token-field">
             <div className="token-label-row">
@@ -522,6 +569,30 @@ function App() {
               {LOCATION_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Location Search</span>
+            <input
+              type="text"
+              value={formState.locationSearchText}
+              onChange={(event) =>
+                setFormState((prev) => ({ ...prev, locationSearchText: event.target.value }))
+              }
+              placeholder="e.g. San Jose"
+            />
+          </label>
+          <label>
+            <span>Limit</span>
+            <select
+              value={formState.limit}
+              onChange={(event) => setFormState((prev) => ({ ...prev, limit: event.target.value }))}
+            >
+              {LIMIT_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
                 </option>
               ))}
             </select>
