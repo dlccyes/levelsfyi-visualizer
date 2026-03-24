@@ -529,6 +529,7 @@ function computeCompanyMetrics(decodedResponse) {
     locationSummary: summarizeField(rows, "location"),
     genderSummary: summarizeField(rows, "gender"),
     ethnicitySummary: summarizeField(rows, "ethnicity"),
+    educationSummary: summarizeField(rows, "education"),
     plot: buildTcDistributionPlot(tcValues),
     total: decodedResponse.total,
   };
@@ -1437,6 +1438,10 @@ function CompanySummarySections({ result }) {
           <h2>Top Ethnicity</h2>
           <SummaryTable title="Ethnicity" rows={result.metrics.ethnicitySummary} />
         </article>
+        <article className="panel">
+          <h2>Top Education</h2>
+          <SummaryTable title="Education" rows={result.metrics.educationSummary} />
+        </article>
       </section>
     </>
   );
@@ -1675,6 +1680,7 @@ CompanySummarySections.propTypes = {
       locationSummary: PropTypes.array.isRequired,
       genderSummary: PropTypes.array.isRequired,
       ethnicitySummary: PropTypes.array.isRequired,
+      educationSummary: PropTypes.array.isRequired,
     }).isRequired,
   }).isRequired,
 };
