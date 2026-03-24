@@ -13,7 +13,14 @@ const STATIC_QUERY_PARAMS = {
   currency: "USD",
 };
 
-const BASE_URL = "/api/levels/v3/salary/search";
+const LEVELS_API_PROXY_PATH = "/api/levels/v3/salary/search";
+const LEVELS_API_ORIGIN = "https://api.levels.fyi";
+const LEVELS_API_PATH = "/v3/salary/search";
+
+function isLocalhost() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
 
 function wordArrayToUint8Array(wordArray) {
   const { words, sigBytes } = wordArray;
@@ -107,7 +114,11 @@ function buildRequestUrl(formState) {
     ...STATIC_QUERY_PARAMS,
   });
   params.append("dmaIds[]", formState.dmaId);
-  return `${BASE_URL}?${params.toString()}`;
+  const url = isLocalhost()
+    ? new URL(LEVELS_API_PROXY_PATH, window.location.origin)
+    : new URL(LEVELS_API_PATH, LEVELS_API_ORIGIN);
+  url.search = params.toString();
+  return url.toString();
 }
 
 function buildHeaders(token) {
