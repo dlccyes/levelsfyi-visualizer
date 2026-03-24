@@ -1,0 +1,15 @@
+curl --location --globoff 'https://api.levels.fyi/v3/salary/search?minYearsOfExp=2&maxYearsOfExp=4&companySlug=bytedance&limit=50&sortBy=offer_date&sortOrder=DESC&jobFamilySlug=software-engineer&currency=USD&dmaIds[]=807' \
+--header 'Accept: application/json, text/plain, */*' \
+--header 'Accept-Language: en-US,en;q=0.9' \
+--header 'Authorization: Bearer eyJraWQiOiJJaFplZEtLU3hDVkFDSmJaMTkra1wvQVJNWm5yVHZiMDZlYTZTMGFOeXo4UT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiI2ZTdiMGRmYi0xNDI5LTRjNTctODA2MS0xZDdkMzA4YTYzNWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiY3VzdG9tOmF1dGhDaGFsbGVuZ2UiOiJ7XCJlbWFpbFwiOlwiZGVycmlja2VuOTY4QGdtYWlsLmNvbVwiLFwidG9rZW5cIjpcIjFiMGU0NDFiLTc2NzAtNDA3ZC04MTIwLTFkODE5NzRlY2E2NlwiLFwiZXhwaXJlc0F0XCI6XCIyMDI2LTAzLTIwVDIxOjAwOjEyLjQ3OFpcIn0iLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtd2VzdC0yLmFtYXpvbmF3cy5jb21cL3VzLXdlc3QtMl9mVWNmelNHZHYiLCJjb2duaXRvOnVzZXJuYW1lIjoiNmU3YjBkZmItMTQyOS00YzU3LTgwNjEtMWQ3ZDMwOGE2MzVkIiwiYXVkIjoiNzZvZjBpY2gxOGhkOHVlaGp1N2ZuaXYydTEiLCJpZGVudGl0aWVzIjpbeyJ1c2VySWQiOiIxMDM1NjUyNjIyNzM4NjcwNDU5MzgiLCJwcm92aWRlck5hbWUiOiJHb29nbGUiLCJwcm92aWRlclR5cGUiOiJHb29nbGUiLCJpc3N1ZXIiOm51bGwsInByaW1hcnkiOiJmYWxzZSIsImRhdGVDcmVhdGVkIjoiMTcxNjc3MjA4NjE5MCJ9XSwiZXZlbnRfaWQiOiJkZTZkN2IwMy0yNGFjLTRmOTgtYjU3OS1lYjAxOTk5OGRiOTQiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc3NDAzOTUxOSwiZXhwIjoxNzc0NDE3Mzk1LCJpYXQiOjE3NzQzMzA5OTUsImVtYWlsIjoiZGVycmlja2VuOTY4QGdtYWlsLmNvbSJ9.wNEZeWkN-JqvfaeMpYh6Bo5jFvD1XalALULku61xq74BXmdJQ650btfMDASHg4bf3lI7vsI30_RTKMOV-1lqxvmiTZuZSf7ab1lln8cWNPfuzdvyxQ000hixjsmLqqrSdi1_TeWloUvD5b2dXncQxQAEaUHHdlLnE-L_hOnAGn3Sgwg49jMvxBuN2p5EAUAdR3LDijCblxvJUbl8PsC0gc-Zrcer6jxu1sq1lm3r1v8N2d3EYwPpeZ4xfviXfnrW21elwED1eMlXh8_14s0Dhczp_vLPHyKbRX95icgSZz7ZMe6Whhe50JaRcObVGXp44EjK4eSu5r96DoO-Y_8YLQ' \
+--header 'Connection: keep-alive' \
+--header 'Origin: https://www.levels.fyi' \
+--header 'Referer: https://www.levels.fyi/' \
+--header 'Sec-Fetch-Dest: empty' \
+--header 'Sec-Fetch-Mode: cors' \
+--header 'Sec-Fetch-Site: same-site' \
+--header 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36' \
+--header 'sec-ch-ua: "Chromium";v="145", "Not:A-Brand";v="99"' \
+--header 'sec-ch-ua-mobile: ?0' \
+--header 'sec-ch-ua-platform: "macOS"' \
+--header 'x-agent: levelsfyi_website'
