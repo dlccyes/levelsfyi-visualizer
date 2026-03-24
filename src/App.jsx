@@ -14,7 +14,7 @@ const STATIC_QUERY_PARAMS = {
 };
 
 const LEVELS_API_PROXY_PATH = "/api/levels/v3/salary/search";
-const LEVELS_API_ORIGIN = "https://api.levels.fyi";
+const LEVELS_API_PROXY_ORIGIN = "https://levelsfyi-proxy.derricken968.workers.dev";
 const LEVELS_API_PATH = "/v3/salary/search";
 
 function isLocalhost() {
@@ -116,7 +116,7 @@ function buildRequestUrl(formState) {
   params.append("dmaIds[]", formState.dmaId);
   const url = isLocalhost()
     ? new URL(LEVELS_API_PROXY_PATH, window.location.origin)
-    : new URL(LEVELS_API_PATH, LEVELS_API_ORIGIN);
+    : new URL(LEVELS_API_PATH, LEVELS_API_PROXY_ORIGIN);
   url.search = params.toString();
   return url.toString();
 }
