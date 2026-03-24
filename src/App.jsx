@@ -535,6 +535,7 @@ function computeCompanyMetrics(decodedResponse) {
 }
 
 async function fetchCompanyResult(formState, bearerToken, selectedLimit, companySlug) {
+  const rawPages = [];
   const decodedPages = [];
   let offset = 0;
   let fetchedRows = 0;
@@ -547,6 +548,7 @@ async function fetchCompanyResult(formState, bearerToken, selectedLimit, company
     }
 
     const responseJson = await response.json();
+    rawPages.push(responseJson);
     const decoded = decodeLevelsPayload(responseJson);
     const pageRows = Array.isArray(decoded.rows) ? decoded.rows : [];
     const reportedTotal = Number(decoded.total);
@@ -568,7 +570,7 @@ async function fetchCompanyResult(formState, bearerToken, selectedLimit, company
   return {
     companySlug,
     metrics: computeCompanyMetrics(mergedDecodedResponse),
-    rawResponse: decodedPages.length === 1 ? decodedPages[0] : decodedPages,
+    rawResponse: rawPages.length === 1 ? rawPages[0] : rawPages,
     decodedResponse: mergedDecodedResponse,
   };
 }
