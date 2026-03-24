@@ -5,6 +5,9 @@ import PropTypes from "prop-types";
 
 const LOCATION_OPTIONS = [
   { label: "Any", value: "" },
+  { label: "Austin", value: "635" },
+  { label: "NYC", value: "501" },
+  { label: "Seattle", value: "819" },
   { label: "SF Bay Area", value: "807" },
 ];
 const COMPANY_OPTIONS = [
@@ -277,10 +280,10 @@ function compareValues(a, b, direction) {
 function App() {
   const [formState, setFormState] = useState({
     bearerToken: "",
-    company: "bytedance",
+    company: "google",
     minYearsOfExp: "2",
     maxYearsOfExp: "4",
-    dmaId: "",
+    dmaId: "807",
   });
   const [rawResponse, setRawResponse] = useState(null);
   const [decodedResponse, setDecodedResponse] = useState(null);
