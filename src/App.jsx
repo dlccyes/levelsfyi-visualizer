@@ -22,6 +22,16 @@ const COMPANY_OPTIONS = [
 ];
 const LIMIT_OPTIONS = ["50", "100", "150", "200", "250"];
 const API_PAGE_LIMIT = 50;
+const COMPANY_SERIES_COLORS = [
+  "#dc2626",
+  "#2563eb",
+  "#16a34a",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#be185d",
+  "#4b5563",
+];
 
 const STATIC_QUERY_PARAMS = {
   sortBy: "offer_date",
@@ -133,8 +143,8 @@ function summarizeField(rows, field, limit = 8) {
     }));
 }
 
-function buildRequestUrl(formState, offset = 0) {
-  const companySlug = formState.company
+function buildRequestUrl(formState, company, offset = 0) {
+  const companySlug = company
     .trim()
     .toLowerCase()
     .replaceAll(/\s+/g, "-");
@@ -187,17 +197,17 @@ function buildSampleRows(rows) {
     const hasValidOfferDate = Number.isFinite(parsedOfferDate);
 
     return {
-    id: `${row.company || "unknown"}-${row.level || "unknown"}-${row.location || "unknown"}-${index}`,
-    company: row.company || "",
-    level: row.level || "",
-    yoe: Number(row.yearsOfExperience),
-    location: row.location || "",
-    totalCompensationValue: Number(row.totalCompensation),
-    baseSalaryValue: Number(row.baseSalary),
-    totalCompensation: formatUSD(row.totalCompensation),
-    baseSalary: formatUSD(row.baseSalary),
-    offerDate: hasValidOfferDate ? new Date(parsedOfferDate).toLocaleString() : "N/A",
-    offerDateValue: hasValidOfferDate ? parsedOfferDate : Number.NEGATIVE_INFINITY,
+      id: `${row.company || "unknown"}-${row.level || "unknown"}-${row.location || "unknown"}-${index}`,
+      company: row.company || "",
+      level: row.level || "",
+      yoe: Number(row.yearsOfExperience),
+      location: row.location || "",
+      totalCompensationValue: Number(row.totalCompensation),
+      baseSalaryValue: Number(row.baseSalary),
+      totalCompensation: formatUSD(row.totalCompensation),
+      baseSalary: formatUSD(row.baseSalary),
+      offerDate: hasValidOfferDate ? new Date(parsedOfferDate).toLocaleString() : "N/A",
+      offerDateValue: hasValidOfferDate ? parsedOfferDate : Number.NEGATIVE_INFINITY,
     };
   });
 }
@@ -289,10 +299,122 @@ function buildTcDistributionPlot(tcValues) {
   };
 }
 
-function getCopyButtonLabel(status) {
-  if (status === "loading") return "Copying...";
-  if (status === "success") return "Copied!";
-  return "Copy JSON";
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return `rgba(0, 0, 0, ${alpha})`;
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getCompanySeriesColor(index) {
+  return COMPANY_SERIES_COLORS[index % COMPANY_SERIES_COLORS.length];
+}
+
+function buildMultiTcDistributionPlot(companyResults) {
+  const sortedSeriesInput = companyResults.map((companyResult) => ({
+    label: companyResult.companySlug,
+    values: [...companyResult.metrics.tcValues].sort((a, b) => a - b),
+  }));
+  const mergedValues = sortedSeriesInput.flatMap((series) => series.values).sort((a, b) => a - b);
+
+  const width = 860;
+  const rowHeight = 108;
+  const minHeight = 390;
+  const height = Math.max(minHeight, 120 + sortedSeriesInput.length * rowHeight);
+  const marginLeft = 58;
+  const marginRight = 38;
+  const marginTop = 34;
+  const plotWidth = width - marginLeft - marginRight;
+
+  if (!mergedValues.length) {
+    return { width, height, hasData: false };
+  }
+
+  const min = mergedValues[0];
+  const max = mergedValues.at(-1);
+  const rawRange = Math.max(max - min, 1);
+  const domainPadding = Math.max(rawRange * 0.12, 8000);
+  const domainMin = Math.max(0, min - domainPadding);
+  const domainMax = max + domainPadding;
+  const domainRange = Math.max(domainMax - domainMin, 1);
+
+  function xScale(v) {
+    return marginLeft + ((v - domainMin) / domainRange) * plotWidth;
+  }
+
+  function buildSeries(values, color, centerY) {
+    if (!values.length) {
+      return {
+        color,
+        centerY,
+        hasData: false,
+        dots: [],
+      };
+    }
+    const q1 = percentile(values, 0.25);
+    const median = percentile(values, 0.5);
+    const q3 = percentile(values, 0.75);
+    const boxHeight = 56;
+    const boxTopY = centerY - boxHeight / 2;
+    const boxBottomY = centerY + boxHeight / 2;
+    const dotOffsets = [-22, -10, 0, 10, 22, -16, 16];
+
+    return {
+      color,
+      centerY,
+      hasData: true,
+      minX: xScale(values[0]),
+      q1X: xScale(q1),
+      medianX: xScale(median),
+      q3X: xScale(q3),
+      maxX: xScale(values.at(-1)),
+      boxWidth: Math.max(xScale(q3) - xScale(q1), 1),
+      boxHeight,
+      boxTopY,
+      boxBottomY,
+      q1Label: formatUSDCompact(q1),
+      medianLabel: formatUSDCompact(median),
+      q3Label: formatUSDCompact(q3),
+      dots: values.map((value, index) => ({
+        cx: xScale(value),
+        cy: centerY + dotOffsets[index % dotOffsets.length],
+      })),
+    };
+  }
+
+  const axisY = height - 66;
+  const series = sortedSeriesInput.map((seriesInput, index) => {
+    const color = getCompanySeriesColor(index);
+    const centerY = 124 + index * rowHeight;
+    return {
+      ...buildSeries(seriesInput.values, color, centerY),
+      label: seriesInput.label,
+    };
+  });
+  const tickCount = 5;
+  const ticks = Array.from({ length: tickCount }, (_, i) => {
+    const t = i / (tickCount - 1);
+    const rawValue = domainMin + domainRange * t;
+    const roundedValue = Math.round(rawValue / 1000) * 1000;
+    return {
+      x: xScale(rawValue),
+      label: formatUSDCompact(roundedValue),
+    };
+  });
+
+  return {
+    hasData: true,
+    width,
+    height,
+    marginTop,
+    axisY,
+    ticks,
+    series,
+    axisStartX: marginLeft,
+    axisEndX: width - marginRight,
+  };
 }
 
 function compareValues(a, b, direction) {
@@ -310,18 +432,98 @@ function compareValues(a, b, direction) {
   return direction === "asc" ? result : -result;
 }
 
+function getCopyButtonLabel(status) {
+  if (status === "loading") return "Copying...";
+  if (status === "success") return "Copied!";
+  return "Copy JSON";
+}
+
+function computeCompanyMetrics(decodedResponse) {
+  const rows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
+  const tcValues = rows
+    .map((r) => Number(r.totalCompensation))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+
+  const yoeValues = rows
+    .map((r) => Number(r.yearsOfExperience))
+    .filter((v) => Number.isFinite(v))
+    .sort((a, b) => a - b);
+
+  const count = tcValues.length;
+  const avgTC = count ? tcValues.reduce((sum, value) => sum + value, 0) / count : 0;
+
+  return {
+    rows,
+    tcValues,
+    count,
+    avgTC,
+    q1: percentile(tcValues, 0.25),
+    median: percentile(tcValues, 0.5),
+    q3: percentile(tcValues, 0.75),
+    minTC: count ? tcValues[0] : 0,
+    maxTC: count ? tcValues[count - 1] : 0,
+    minYoe: yoeValues.length ? yoeValues[0] : null,
+    maxYoe: yoeValues.length ? yoeValues[yoeValues.length - 1] : null,
+    levelSummary: summarizeField(rows, "level"),
+    locationSummary: summarizeField(rows, "location"),
+    genderSummary: summarizeField(rows, "gender"),
+    ethnicitySummary: summarizeField(rows, "ethnicity"),
+    plot: buildTcDistributionPlot(tcValues),
+    total: decodedResponse.total,
+  };
+}
+
+async function fetchCompanyResult(formState, bearerToken, selectedLimit, companySlug) {
+  const decodedPages = [];
+  let offset = 0;
+  let fetchedRows = 0;
+
+  while (fetchedRows < selectedLimit) {
+    const url = buildRequestUrl(formState, companySlug, offset);
+    const response = await fetch(url, { headers: buildHeaders(bearerToken) });
+    if (!response.ok) {
+      throw new Error(`Request failed for ${companySlug} with status ${response.status}.`);
+    }
+
+    const responseJson = await response.json();
+    const decoded = decodeLevelsPayload(responseJson);
+    const pageRows = Array.isArray(decoded.rows) ? decoded.rows : [];
+    const reportedTotal = Number(decoded.total);
+
+    decodedPages.push(decoded);
+    fetchedRows += pageRows.length;
+
+    const reachedSelectedLimit = fetchedRows >= selectedLimit;
+    const reachedEndOfResults = pageRows.length < API_PAGE_LIMIT;
+    const reachedReportedTotal = Number.isFinite(reportedTotal) && offset + pageRows.length >= reportedTotal;
+    if (reachedSelectedLimit || reachedEndOfResults || reachedReportedTotal) {
+      break;
+    }
+
+    offset += API_PAGE_LIMIT;
+  }
+
+  const mergedDecodedResponse = mergeDecodedPages(decodedPages, selectedLimit);
+  return {
+    companySlug,
+    metrics: computeCompanyMetrics(mergedDecodedResponse),
+    rawResponse: decodedPages.length === 1 ? decodedPages[0] : decodedPages,
+    decodedResponse: mergedDecodedResponse,
+  };
+}
+
 function App() {
   const [formState, setFormState] = useState({
     bearerToken: "",
-    company: "google",
+    companies: [{ id: "company-google", value: "google" }],
     minYearsOfExp: "2",
     maxYearsOfExp: "4",
     dmaId: "807",
     locationSearchText: "",
     limit: "50",
   });
-  const [rawResponse, setRawResponse] = useState(null);
-  const [decodedResponse, setDecodedResponse] = useState(null);
+  const [companyResults, setCompanyResults] = useState([]);
   const [requestError, setRequestError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [actionStatus, setActionStatus] = useState({
@@ -335,56 +537,21 @@ function App() {
     direction: "desc",
   });
 
-  function setTransientActionStatus(key, value) {
-    setActionStatus((prev) => ({ ...prev, [key]: value }));
-    globalThis.setTimeout(() => {
-      setActionStatus((prev) => ({ ...prev, [key]: "idle" }));
-    }, 1200);
-  }
-
-  const computed = useMemo(() => {
-    if (!decodedResponse) return null;
-    const rows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
-    const tcValues = rows
-      .map((r) => Number(r.totalCompensation))
-      .filter((v) => Number.isFinite(v) && v > 0)
-      .sort((a, b) => a - b);
-
-    const yoeValues = rows
-      .map((r) => Number(r.yearsOfExperience))
-      .filter((v) => Number.isFinite(v))
-      .sort((a, b) => a - b);
-
-    const count = tcValues.length;
-    const avgTC = count ? tcValues.reduce((sum, value) => sum + value, 0) / count : 0;
-
-    return {
-      rows,
-      count,
-      avgTC,
-      q1: percentile(tcValues, 0.25),
-      median: percentile(tcValues, 0.5),
-      q3: percentile(tcValues, 0.75),
-      minTC: count ? tcValues[0] : 0,
-      maxTC: count ? tcValues[count - 1] : 0,
-      minYoe: yoeValues.length ? yoeValues[0] : null,
-      maxYoe: yoeValues.length ? yoeValues[yoeValues.length - 1] : null,
-      levelSummary: summarizeField(rows, "level"),
-      locationSummary: summarizeField(rows, "location"),
-      genderSummary: summarizeField(rows, "gender"),
-      ethnicitySummary: summarizeField(rows, "ethnicity"),
-      sampleRows: buildSampleRows(rows),
-      plot: buildTcDistributionPlot(tcValues),
-    };
-  }, [decodedResponse]);
+  const isSingleCompanyResult = companyResults.length === 1;
+  const hasMultipleCompanyResults = companyResults.length > 1;
+  const singleCompanyResult = isSingleCompanyResult ? companyResults[0] : null;
+  const mergedMultiCompanyPlot = useMemo(() => {
+    if (!hasMultipleCompanyResults) return null;
+    return buildMultiTcDistributionPlot(companyResults);
+  }, [companyResults, hasMultipleCompanyResults]);
 
   const sortedSampleRows = useMemo(() => {
-    if (!computed) return [];
-    const rows = [...computed.sampleRows];
+    if (!singleCompanyResult) return [];
+    const rows = buildSampleRows(singleCompanyResult.metrics.rows);
     if (!sampleSort.field) return rows;
     rows.sort((a, b) => compareValues(a[sampleSort.field], b[sampleSort.field], sampleSort.direction));
     return rows;
-  }, [computed, sampleSort]);
+  }, [singleCompanyResult, sampleSort]);
 
   function toggleSampleSort(field) {
     setSampleSort((prev) => {
@@ -398,12 +565,47 @@ function App() {
     });
   }
 
+  function setTransientActionStatus(key, value) {
+    setActionStatus((prev) => ({ ...prev, [key]: value }));
+    globalThis.setTimeout(() => {
+      setActionStatus((prev) => ({ ...prev, [key]: "idle" }));
+    }, 1200);
+  }
+
+  function updateCompany(index, value) {
+    setFormState((prev) => ({
+      ...prev,
+      companies: prev.companies.map((company, companyIndex) =>
+        companyIndex === index ? { ...company, value } : company,
+      ),
+    }));
+  }
+
+  function addCompany() {
+    const companyId = `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setFormState((prev) => ({
+      ...prev,
+      companies: [...prev.companies, { id: companyId, value: "" }],
+    }));
+  }
+
+  function removeCompany(index) {
+    setFormState((prev) => {
+      if (prev.companies.length <= 1) {
+        return prev;
+      }
+      return {
+        ...prev,
+        companies: prev.companies.filter((_, companyIndex) => companyIndex !== index),
+      };
+    });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setRequestError("");
     setIsLoading(true);
-    setRawResponse(null);
-    setDecodedResponse(null);
+    setCompanyResults([]);
 
     try {
       const bearerToken = formState.bearerToken.trim();
@@ -412,41 +614,25 @@ function App() {
       }
 
       const selectedLimit = Number(formState.limit);
-      const pageRawResponses = [];
-      const decodedPages = [];
-
-      let offset = 0;
-      let fetchedRows = 0;
-      while (fetchedRows < selectedLimit) {
-        const url = buildRequestUrl(formState, offset);
-        const response = await fetch(url, { headers: buildHeaders(bearerToken) });
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}.`);
-        }
-
-        const responseJson = await response.json();
-        const decoded = decodeLevelsPayload(responseJson);
-        const pageRows = Array.isArray(decoded.rows) ? decoded.rows : [];
-        const reportedTotal = Number(decoded.total);
-
-        pageRawResponses.push(responseJson);
-        decodedPages.push(decoded);
-        fetchedRows += pageRows.length;
-
-        const reachedSelectedLimit = fetchedRows >= selectedLimit;
-        const reachedEndOfResults = pageRows.length < API_PAGE_LIMIT;
-        const reachedReportedTotal =
-          Number.isFinite(reportedTotal) && offset + pageRows.length >= reportedTotal;
-        if (reachedSelectedLimit || reachedEndOfResults || reachedReportedTotal) {
-          break;
-        }
-
-        offset += API_PAGE_LIMIT;
+      const companySlugs = formState.companies
+        .map((company) => company.value.trim().toLowerCase().replaceAll(/\s+/g, "-"))
+        .filter(Boolean);
+      if (!companySlugs.length) {
+        throw new Error("At least one company is required.");
       }
 
-      const mergedDecodedResponse = mergeDecodedPages(decodedPages, selectedLimit);
-      setRawResponse(pageRawResponses.length === 1 ? pageRawResponses[0] : pageRawResponses);
-      setDecodedResponse(mergedDecodedResponse);
+      const nextCompanyResults = [];
+      for (const companySlug of companySlugs) {
+        const companyResult = await fetchCompanyResult(
+          formState,
+          bearerToken,
+          selectedLimit,
+          companySlug,
+        );
+        nextCompanyResults.push(companyResult);
+      }
+
+      setCompanyResults(nextCompanyResults);
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : "Unexpected request error.");
     } finally {
@@ -455,8 +641,8 @@ function App() {
   }
 
   function openDecodedJsonInNewPage() {
-    if (!decodedResponse) return;
-    const jsonText = JSON.stringify(decodedResponse, null, 2);
+    if (!singleCompanyResult?.decodedResponse) return;
+    const jsonText = JSON.stringify(singleCompanyResult.decodedResponse, null, 2);
     const blob = new Blob([jsonText], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank", "noopener,noreferrer");
@@ -465,8 +651,8 @@ function App() {
   }
 
   function openRawApiJsonInNewPage() {
-    if (!rawResponse) return;
-    const jsonText = JSON.stringify(rawResponse, null, 2);
+    if (!singleCompanyResult?.rawResponse) return;
+    const jsonText = JSON.stringify(singleCompanyResult.rawResponse, null, 2);
     const blob = new Blob([jsonText], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank", "noopener,noreferrer");
@@ -520,20 +706,35 @@ function App() {
               required
             />
           </div>
-          <label>
-            <span>Company</span>
-            <input
-              list="company-options"
-              value={formState.company}
-              onChange={(event) => setFormState((prev) => ({ ...prev, company: event.target.value }))}
-              required
-            />
+          <div className="company-list-field">
+            <span>Companies</span>
+            {formState.companies.map((company, index) => (
+              <div key={company.id} className="company-row">
+                <input
+                  list="company-options"
+                  value={company.value}
+                  onChange={(event) => updateCompany(index, event.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="company-row-action"
+                  onClick={() => removeCompany(index)}
+                  disabled={formState.companies.length <= 1}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button type="button" className="company-row-action" onClick={addCompany}>
+              Add Company
+            </button>
             <datalist id="company-options">
               {COMPANY_OPTIONS.map((company) => (
                 <option key={company} value={company} />
               ))}
             </datalist>
-          </label>
+          </div>
           <label>
             <span>Min YoE</span>
             <input
@@ -604,136 +805,158 @@ function App() {
         {requestError && <p className="error">{requestError}</p>}
       </section>
 
-      {computed && (
-        <>
+      {hasMultipleCompanyResults && mergedMultiCompanyPlot && (
+        <section className="panel">
+          <h2>TC Distribution (Combined)</h2>
+          <MultiCompanyBoxPlot plot={mergedMultiCompanyPlot} />
+        </section>
+      )}
+
+      {companyResults.length > 0 &&
+        companyResults.map((result, resultIndex) => (
+        <section
+          key={`${result.companySlug}-${result.metrics.total}-${result.metrics.count}`}
+          className="company-results-group"
+          style={{ "--company-color": getCompanySeriesColor(resultIndex) }}
+        >
+          <section className="panel">
+            <h2>{result.companySlug}</h2>
+          </section>
           <section className="grid metrics">
             <article className="panel metric">
               <h2>Average TC</h2>
-              <div>{formatUSD(computed.avgTC)}</div>
+              <div>{formatUSD(result.metrics.avgTC)}</div>
             </article>
             <article className="panel metric">
               <h2>Q1</h2>
-              <div>{formatUSD(computed.q1)}</div>
+              <div>{formatUSD(result.metrics.q1)}</div>
             </article>
             <article className="panel metric">
               <h2>Median</h2>
-              <div>{formatUSD(computed.median)}</div>
+              <div>{formatUSD(result.metrics.median)}</div>
             </article>
             <article className="panel metric">
               <h2>Q3</h2>
-              <div>{formatUSD(computed.q3)}</div>
+              <div>{formatUSD(result.metrics.q3)}</div>
             </article>
             <article className="panel metric">
               <h2>Min / Max TC</h2>
               <div>
-                {formatUSD(computed.minTC)} / {formatUSD(computed.maxTC)}
+                {formatUSD(result.metrics.minTC)} / {formatUSD(result.metrics.maxTC)}
               </div>
             </article>
             <article className="panel metric">
               <h2>Rows Used</h2>
-              <div>{formatInt(computed.count)}</div>
+              <div>{formatInt(result.metrics.count)}</div>
             </article>
             <article className="panel metric">
               <h2>Response Total</h2>
-              <div>{formatInt(decodedResponse.total)}</div>
+              <div>{formatInt(result.metrics.total)}</div>
             </article>
           </section>
 
-          <section className="panel">
-            <h2>TC Distribution</h2>
-            <BoxPlot plot={computed.plot} />
-          </section>
+          {!hasMultipleCompanyResults && (
+            <section className="panel">
+              <h2>TC Distribution</h2>
+              <BoxPlot plot={result.metrics.plot} />
+            </section>
+          )}
 
           <section className="grid">
             <article className="panel">
               <h2>Top Levels</h2>
-              <SummaryTable title="Level" rows={computed.levelSummary} />
+              <SummaryTable title="Level" rows={result.metrics.levelSummary} />
             </article>
             <article className="panel">
               <h2>Top Locations</h2>
-              <SummaryTable title="Location" rows={computed.locationSummary} />
+              <SummaryTable title="Location" rows={result.metrics.locationSummary} />
             </article>
             <article className="panel">
               <h2>Top Gender</h2>
-              <SummaryTable title="Gender" rows={computed.genderSummary} />
+              <SummaryTable title="Gender" rows={result.metrics.genderSummary} />
             </article>
             <article className="panel">
               <h2>Top Ethnicity</h2>
-              <SummaryTable title="Ethnicity" rows={computed.ethnicitySummary} />
+              <SummaryTable title="Ethnicity" rows={result.metrics.ethnicitySummary} />
             </article>
           </section>
 
-          <section className="panel">
-            <h2>Records</h2>
-            <SampleRowsTable
-              rows={sortedSampleRows}
-              sortField={sampleSort.field}
-              sortDirection={sampleSort.direction}
-              onToggleSort={toggleSampleSort}
-            />
-          </section>
+          {isSingleCompanyResult && (
+            <>
+              <section className="panel">
+                <h2>Records</h2>
+                <SampleRowsTable
+                  rows={sortedSampleRows}
+                  sortField={sampleSort.field}
+                  sortDirection={sampleSort.direction}
+                  onToggleSort={toggleSampleSort}
+                />
+              </section>
 
-          <section className="panel">
-            <div className="panel-header">
-              <h2>Decoded JSON</h2>
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => copyJsonToClipboard(decodedResponse, "decodedCopy")}
-                  disabled={actionStatus.decodedCopy === "loading"}
-                >
-                  {getCopyButtonLabel(actionStatus.decodedCopy)}
-                </button>
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={openDecodedJsonInNewPage}
-                  disabled={actionStatus.decodedOpen !== "idle"}
-                >
-                  {actionStatus.decodedOpen === "success" ? "Opened!" : "Open Raw JSON"}
-                </button>
-              </div>
-            </div>
-            <pre>{JSON.stringify(decodedResponse, null, 2)}</pre>
-          </section>
+              <section className="panel">
+                <div className="panel-header">
+                  <h2>Decoded JSON</h2>
+                  <div className="panel-actions">
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => copyJsonToClipboard(singleCompanyResult.decodedResponse, "decodedCopy")}
+                      disabled={actionStatus.decodedCopy === "loading"}
+                    >
+                      {getCopyButtonLabel(actionStatus.decodedCopy)}
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={openDecodedJsonInNewPage}
+                      disabled={actionStatus.decodedOpen !== "idle"}
+                    >
+                      {actionStatus.decodedOpen === "success" ? "Opened!" : "Open Raw JSON"}
+                    </button>
+                  </div>
+                </div>
+                <pre>{JSON.stringify(singleCompanyResult.decodedResponse, null, 2)}</pre>
+              </section>
 
-          <section className="panel">
-            <div className="panel-header">
-              <h2>Raw API Response</h2>
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => copyJsonToClipboard(rawResponse, "rawCopy")}
-                  disabled={actionStatus.rawCopy === "loading"}
-                >
-                  {getCopyButtonLabel(actionStatus.rawCopy)}
-                </button>
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={openRawApiJsonInNewPage}
-                  disabled={actionStatus.rawOpen !== "idle"}
-                >
-                  {actionStatus.rawOpen === "success" ? "Opened!" : "Open Raw JSON"}
-                </button>
-              </div>
-            </div>
-            <pre>{JSON.stringify(rawResponse, null, 2)}</pre>
-          </section>
+              <section className="panel">
+                <div className="panel-header">
+                  <h2>Raw API Response</h2>
+                  <div className="panel-actions">
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => copyJsonToClipboard(singleCompanyResult.rawResponse, "rawCopy")}
+                      disabled={actionStatus.rawCopy === "loading"}
+                    >
+                      {getCopyButtonLabel(actionStatus.rawCopy)}
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={openRawApiJsonInNewPage}
+                      disabled={actionStatus.rawOpen !== "idle"}
+                    >
+                      {actionStatus.rawOpen === "success" ? "Opened!" : "Open Raw JSON"}
+                    </button>
+                  </div>
+                </div>
+                <pre>{JSON.stringify(singleCompanyResult.rawResponse, null, 2)}</pre>
+              </section>
 
-          <section className="panel">
-            <h2>Returned Data</h2>
-            <p>
-              Hidden rows: {formatInt(decodedResponse.hidden)} | Reported total:{" "}
-              {formatInt(decodedResponse.total)} | Min YoE in rows:{" "}
-              {computed.minYoe == null ? "N/A" : computed.minYoe} | Max YoE in rows:{" "}
-              {computed.maxYoe == null ? "N/A" : computed.maxYoe}
-            </p>
-          </section>
-        </>
-      )}
+              <section className="panel">
+                <h2>Returned Data</h2>
+                <p>
+                  Hidden rows: {formatInt(singleCompanyResult.decodedResponse.hidden)} | Reported total:{" "}
+                  {formatInt(singleCompanyResult.decodedResponse.total)} | Min YoE in rows:{" "}
+                  {singleCompanyResult.metrics.minYoe == null ? "N/A" : singleCompanyResult.metrics.minYoe} |
+                  Max YoE in rows:{" "}
+                  {singleCompanyResult.metrics.maxYoe == null ? "N/A" : singleCompanyResult.metrics.maxYoe}
+                </p>
+              </section>
+            </>
+          )}
+        </section>
+      ))}
     </main>
   );
 }
@@ -816,6 +1039,110 @@ function BoxPlot({ plot }) {
         <text className="plot-stat-label" x={plot.q3X} y="244">
           75th
         </text>
+      </svg>
+    </div>
+  );
+}
+
+function MultiCompanyBoxPlot({ plot }) {
+  if (!plot.hasData) {
+    return <p className="warning">No TC data available for plot.</p>;
+  }
+
+  return (
+    <div className="plot-shell">
+      <svg viewBox={`0 0 ${plot.width} ${plot.height}`} preserveAspectRatio="xMidYMid meet">
+        {plot.ticks.map((tick) => (
+          <g key={`dual-tick-${tick.x}`}>
+            <line className="plot-grid" x1={tick.x} y1={plot.marginTop} x2={tick.x} y2={plot.axisY} />
+            <text className="plot-tick-label" x={tick.x} y={plot.axisY}>
+              {tick.label}
+            </text>
+          </g>
+        ))}
+
+        {plot.series.map((series) => (
+          <g key={`series-${series.label}`}>
+            <text className="plot-series-label" x="18" y={series.centerY + 4} style={{ fill: series.color }}>
+              {series.label}
+            </text>
+            {series.hasData && (
+              <>
+                <line
+                  className="plot-whisker"
+                  style={{ stroke: series.color }}
+                  x1={series.minX}
+                  y1={series.centerY}
+                  x2={series.q1X}
+                  y2={series.centerY}
+                />
+                <line
+                  className="plot-whisker"
+                  style={{ stroke: series.color }}
+                  x1={series.q3X}
+                  y1={series.centerY}
+                  x2={series.maxX}
+                  y2={series.centerY}
+                />
+                <line
+                  className="plot-whisker"
+                  style={{ stroke: series.color }}
+                  x1={series.minX}
+                  y1={series.boxTopY}
+                  x2={series.minX}
+                  y2={series.boxBottomY}
+                />
+                <line
+                  className="plot-whisker"
+                  style={{ stroke: series.color }}
+                  x1={series.maxX}
+                  y1={series.boxTopY}
+                  x2={series.maxX}
+                  y2={series.boxBottomY}
+                />
+                <rect
+                  className="plot-box"
+                  style={{ fill: hexToRgba(series.color, 0.14), stroke: series.color }}
+                  x={series.q1X}
+                  y={series.boxTopY}
+                  width={series.boxWidth}
+                  height={series.boxHeight}
+                />
+                <line
+                  className="plot-median"
+                  style={{ stroke: series.color }}
+                  x1={series.medianX}
+                  y1={series.boxTopY}
+                  x2={series.medianX}
+                  y2={series.boxBottomY}
+                />
+
+                {series.dots.map((dot, index) => (
+                  <circle
+                    key={`${series.label}-${dot.cx}-${dot.cy}-${index}`}
+                    className="plot-dot"
+                    style={{ fill: hexToRgba(series.color, 0.85) }}
+                    cx={dot.cx}
+                    cy={dot.cy}
+                    r="7"
+                  />
+                ))}
+
+                <text className="plot-stat-value" x={series.q1X} y={series.boxTopY - 10}>
+                  {series.q1Label}
+                </text>
+                <text className="plot-stat-value" x={series.medianX} y={series.centerY + 6}>
+                  {series.medianLabel}
+                </text>
+                <text className="plot-stat-value" x={series.q3X} y={series.boxTopY - 10}>
+                  {series.q3Label}
+                </text>
+              </>
+            )}
+          </g>
+        ))}
+
+        <line className="plot-axis" x1={plot.axisStartX} y1={plot.axisY} x2={plot.axisEndX} y2={plot.axisY} />
       </svg>
     </div>
   );
@@ -992,6 +1319,50 @@ BoxPlot.propTypes = {
         cy: PropTypes.number.isRequired,
       }),
     ),
+  }).isRequired,
+};
+
+MultiCompanyBoxPlot.propTypes = {
+  plot: PropTypes.shape({
+    hasData: PropTypes.bool.isRequired,
+    width: PropTypes.number.isRequired,
+    height: PropTypes.number.isRequired,
+    marginTop: PropTypes.number,
+    axisY: PropTypes.number,
+    ticks: PropTypes.arrayOf(
+      PropTypes.shape({
+        x: PropTypes.number.isRequired,
+        label: PropTypes.string.isRequired,
+      }),
+    ),
+    series: PropTypes.arrayOf(
+      PropTypes.shape({
+        label: PropTypes.string.isRequired,
+        color: PropTypes.string.isRequired,
+        centerY: PropTypes.number.isRequired,
+        hasData: PropTypes.bool.isRequired,
+        minX: PropTypes.number,
+        q1X: PropTypes.number,
+        medianX: PropTypes.number,
+        q3X: PropTypes.number,
+        maxX: PropTypes.number,
+        boxWidth: PropTypes.number,
+        boxHeight: PropTypes.number,
+        boxTopY: PropTypes.number,
+        boxBottomY: PropTypes.number,
+        q1Label: PropTypes.string,
+        medianLabel: PropTypes.string,
+        q3Label: PropTypes.string,
+        dots: PropTypes.arrayOf(
+          PropTypes.shape({
+            cx: PropTypes.number.isRequired,
+            cy: PropTypes.number.isRequired,
+          }),
+        ).isRequired,
+      }),
+    ).isRequired,
+    axisStartX: PropTypes.number.isRequired,
+    axisEndX: PropTypes.number.isRequired,
   }).isRequired,
 };
 

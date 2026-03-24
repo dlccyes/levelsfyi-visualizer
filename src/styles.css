@@ -65,6 +65,39 @@ body {
   min-width: 0;
 }
 
+.company-list-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.company-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.company-row-action {
+  width: auto !important;
+  min-width: 106px;
+}
+
+.company-results-group {
+  display: grid;
+  gap: 16px;
+}
+
+.company-results-group .panel {
+  border-left: 4px solid var(--company-color, #d1d5db);
+}
+
+.company-results-group .panel h2 {
+  color: var(--company-color, #111827);
+}
+
 .token-label-row {
   display: inline-flex;
   align-items: center;
@@ -286,6 +319,47 @@ pre {
 
 .plot-dot {
   fill: rgba(74, 174, 97, 0.88);
+}
+
+.plot-dot-red {
+  fill: rgba(220, 38, 38, 0.85);
+}
+
+.plot-dot-blue {
+  fill: rgba(37, 99, 235, 0.85);
+}
+
+.plot-whisker-red,
+.plot-median-red {
+  stroke: #dc2626;
+}
+
+.plot-whisker-blue,
+.plot-median-blue {
+  stroke: #2563eb;
+}
+
+.plot-box-red {
+  fill: rgba(220, 38, 38, 0.14);
+  stroke: #dc2626;
+}
+
+.plot-box-blue {
+  fill: rgba(37, 99, 235, 0.14);
+  stroke: #2563eb;
+}
+
+.plot-series-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.plot-series-label-red {
+  fill: #dc2626;
+}
+
+.plot-series-label-blue {
+  fill: #2563eb;
 }
 
 .plot-tick-label {
