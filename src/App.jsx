@@ -105,17 +105,31 @@ function formatUSDCompact(value) {
 }
 
 function summarizeField(rows, field, limit = 8) {
-  const counts = {};
+  const statsByValue = {};
   rows.forEach((row) => {
     const raw = row[field];
     const key = raw == null || raw === "" ? "Unknown" : String(raw);
-    counts[key] = (counts[key] ?? 0) + 1;
+    const totalCompensationValue = Number(row.totalCompensation);
+    if (!statsByValue[key]) {
+      statsByValue[key] = {
+        count: 0,
+        totalCompensationSum: 0,
+      };
+    }
+    statsByValue[key].count += 1;
+    if (Number.isFinite(totalCompensationValue)) {
+      statsByValue[key].totalCompensationSum += totalCompensationValue;
+    }
   });
 
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
+  return Object.entries(statsByValue)
+    .sort((a, b) => b[1].count - a[1].count)
     .slice(0, limit)
-    .map(([value, count]) => ({ value, count }));
+    .map(([value, stats]) => ({
+      value,
+      count: stats.count,
+      avgTCValue: stats.count ? stats.totalCompensationSum / stats.count : Number.NaN,
+    }));
 }
 
 function buildRequestUrl(formState) {
@@ -296,7 +310,7 @@ function App() {
     rawOpen: "idle",
   });
   const [sampleSort, setSampleSort] = useState({
-    field: "totalCompensationValue",
+    field: "",
     direction: "desc",
   });
 
@@ -346,6 +360,7 @@ function App() {
   const sortedSampleRows = useMemo(() => {
     if (!computed) return [];
     const rows = [...computed.sampleRows];
+    if (!sampleSort.field) return rows;
     rows.sort((a, b) => compareValues(a[sampleSort.field], b[sampleSort.field], sampleSort.direction));
     return rows;
   }, [computed, sampleSort]);
@@ -429,10 +444,7 @@ function App() {
     <main className="page">
       <section className="panel">
         <h1>Levels.fyi Visualizer</h1>
-        <p>
-          Enter company and YoE range. Location is optional; selecting SF Bay Area maps to{" "}
-          <code>dmaIds[]=807</code>.
-        </p>
+        <p>Only the most recent 50 records are fetched.</p>
         <form onSubmit={handleSubmit} className="form">
           <div className="span-2 token-field">
             <div className="token-label-row">
@@ -739,19 +751,65 @@ function BoxPlot({ plot }) {
 }
 
 function SummaryTable({ title, rows }) {
+  const [sort, setSort] = useState({
+    field: "",
+    direction: "desc",
+  });
+
+  const sortedRows = useMemo(() => {
+    const nextRows = [...rows];
+    if (!sort.field) return nextRows;
+    nextRows.sort((a, b) => compareValues(a[sort.field], b[sort.field], sort.direction));
+    return nextRows;
+  }, [rows, sort]);
+
+  function toggleSort(field) {
+    setSort((prev) => {
+      if (prev.field === field) {
+        return {
+          field,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        field,
+        direction: "desc",
+      };
+    });
+  }
+
+  function getSortLabel(field) {
+    if (sort.field !== field) return "↕";
+    return sort.direction === "asc" ? "↑" : "↓";
+  }
+
   return (
     <table>
       <thead>
         <tr>
-          <th>{title}</th>
-          <th>Count</th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => toggleSort("value")}>
+              {title} {getSortLabel("value")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => toggleSort("count")}>
+              Count {getSortLabel("count")}
+            </button>
+          </th>
+          <th>
+            <button type="button" className="table-sort-button" onClick={() => toggleSort("avgTCValue")}>
+              Avg TC {getSortLabel("avgTCValue")}
+            </button>
+          </th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {sortedRows.map((row) => (
           <tr key={`${title}-${row.value}`}>
             <td>{row.value}</td>
             <td>{row.count}</td>
+            <td>{formatUSD(row.avgTCValue)}</td>
           </tr>
         ))}
       </tbody>
@@ -872,6 +930,7 @@ SummaryTable.propTypes = {
     PropTypes.shape({
       value: PropTypes.string.isRequired,
       count: PropTypes.number.isRequired,
+      avgTCValue: PropTypes.number,
     }),
   ).isRequired,
 };
