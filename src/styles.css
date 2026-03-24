@@ -397,7 +397,7 @@ pre {
 }
 
 .plot-tick-label {
-  fill: #7c7c7c;
+  fill: #000;
   font-size: 11px;
   text-anchor: middle;
 }
@@ -409,7 +409,7 @@ pre {
 }
 
 .plot-stat-value {
-  fill: #7b7b7b;
+  fill: #000;
   font-size: 13px;
   text-anchor: middle;
 }

@@ -51,6 +51,11 @@ const COMPANY_PRESETS = [
     companies: ["jane-street", "citadel", "hudson-river-trading", "jump-trading"],
   },
 ];
+const QUERY_MODE_OPTIONS = [
+  { value: "search", label: "Search" },
+  { value: "compare-companies", label: "Compare Companies" },
+  { value: "compare-locations", label: "Compare Locations" },
+];
 const LIMIT_OPTIONS = ["50", "100", "150", "200", "250"];
 const API_PAGE_LIMIT = 50;
 const COMPANY_SERIES_COLORS = [
@@ -345,7 +350,7 @@ function getCompanySeriesColor(index) {
 
 function buildMultiTcDistributionPlot(companyResults) {
   const sortedSeriesInput = companyResults.map((companyResult) => ({
-    label: companyResult.companySlug,
+    label: companyResult.seriesLabel || companyResult.companySlug,
     values: [...companyResult.metrics.tcValues].sort((a, b) => a - b),
   }));
   const mergedValues = sortedSeriesInput.flatMap((series) => series.values).sort((a, b) => a - b);
@@ -469,6 +474,15 @@ function getCopyButtonLabel(status) {
   return "Copy JSON";
 }
 
+function buildEntityId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function getLocationLabelByDmaId(dmaId) {
+  const matchedOption = LOCATION_OPTIONS.find((option) => option.value === dmaId);
+  return matchedOption?.label || "Unknown";
+}
+
 function computeCompanyMetrics(decodedResponse) {
   const rows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
   const tcValues = rows
@@ -548,12 +562,14 @@ function App() {
   const [formState, setFormState] = useState({
     bearerToken: "",
     companies: [{ id: "company-google", value: "google" }],
+    locations: [{ id: "location-sf-bay-area", dmaId: "807" }],
     minYearsOfExp: "2",
     maxYearsOfExp: "4",
     dmaId: "807",
     locationSearchText: "",
     limit: "50",
   });
+  const [queryMode, setQueryMode] = useState("search");
   const [companyResults, setCompanyResults] = useState([]);
   const [requestError, setRequestError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -569,6 +585,8 @@ function App() {
   });
   const [collapsedCompanies, setCollapsedCompanies] = useState({});
   const [selectedPresetKey, setSelectedPresetKey] = useState("");
+  const isCompareCompaniesMode = queryMode === "compare-companies";
+  const isCompareLocationsMode = queryMode === "compare-locations";
 
   const isSingleCompanyResult = companyResults.length === 1;
   const hasMultipleCompanyResults = companyResults.length > 1;
@@ -615,10 +633,9 @@ function App() {
   }
 
   function addCompany() {
-    const companyId = `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setFormState((prev) => ({
       ...prev,
-      companies: [...prev.companies, { id: companyId, value: "" }],
+      companies: [...prev.companies, { id: buildEntityId("company"), value: "" }],
     }));
   }
 
@@ -636,7 +653,7 @@ function App() {
       ...prev,
       dmaId: selectedPreset.dmaId,
       companies: selectedPreset.companies.map((company) => ({
-        id: `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: buildEntityId("company"),
         value: company,
       })),
     }));
@@ -652,6 +669,54 @@ function App() {
         companies: prev.companies.filter((_, companyIndex) => companyIndex !== index),
       };
     });
+  }
+
+  function updateLocation(index, dmaId) {
+    setFormState((prev) => ({
+      ...prev,
+      locations: prev.locations.map((location, locationIndex) =>
+        locationIndex === index ? { ...location, dmaId } : location,
+      ),
+    }));
+  }
+
+  function addLocation() {
+    setFormState((prev) => ({
+      ...prev,
+      locations: [...prev.locations, { id: buildEntityId("location"), dmaId: "807" }],
+    }));
+  }
+
+  function removeLocation(index) {
+    setFormState((prev) => {
+      if (prev.locations.length <= 1) {
+        return prev;
+      }
+      return {
+        ...prev,
+        locations: prev.locations.filter((_, locationIndex) => locationIndex !== index),
+      };
+    });
+  }
+
+  function handleModeChange(nextMode) {
+    setQueryMode(nextMode);
+    setCompanyResults([]);
+    setCollapsedCompanies({});
+    setRequestError("");
+    setSelectedPresetKey("");
+
+    setFormState((prev) => ({
+      ...prev,
+      companies:
+        nextMode === "compare-companies"
+          ? prev.companies
+          : [{ id: prev.companies[0]?.id || buildEntityId("company"), value: prev.companies[0]?.value || "" }],
+      locations:
+        prev.locations.length > 0
+          ? prev.locations
+          : [{ id: buildEntityId("location"), dmaId: prev.dmaId || "807" }],
+    }));
   }
 
   function toggleCompanyCollapse(companyKey) {
@@ -683,14 +748,56 @@ function App() {
       }
 
       const nextCompanyResults = [];
-      for (const companySlug of companySlugs) {
+      if (isCompareLocationsMode) {
+        const companySlug = companySlugs[0];
+        const selectedLocations = formState.locations
+          .map((location) => location.dmaId)
+          .filter(Boolean);
+
+        if (!selectedLocations.length) {
+          throw new Error("At least one location is required.");
+        }
+
+        for (const dmaId of selectedLocations) {
+          const scopedFormState = { ...formState, dmaId, locationSearchText: "" };
+          const companyResult = await fetchCompanyResult(
+            scopedFormState,
+            bearerToken,
+            selectedLimit,
+            companySlug,
+          );
+          nextCompanyResults.push({
+            ...companyResult,
+            seriesLabel: getLocationLabelByDmaId(dmaId),
+            groupKey: dmaId,
+          });
+        }
+      } else if (isCompareCompaniesMode) {
+        for (const companySlug of companySlugs) {
+          const companyResult = await fetchCompanyResult(
+            formState,
+            bearerToken,
+            selectedLimit,
+            companySlug,
+          );
+          nextCompanyResults.push({
+            ...companyResult,
+            seriesLabel: companyResult.companySlug,
+            groupKey: companyResult.companySlug,
+          });
+        }
+      } else {
         const companyResult = await fetchCompanyResult(
           formState,
           bearerToken,
           selectedLimit,
-          companySlug,
+          companySlugs[0],
         );
-        nextCompanyResults.push(companyResult);
+        nextCompanyResults.push({
+          ...companyResult,
+          seriesLabel: companyResult.companySlug,
+          groupKey: companyResult.companySlug,
+        });
       }
 
       setCompanyResults(nextCompanyResults);
@@ -740,6 +847,16 @@ function App() {
         <h1>Levels.fyi Visualizer</h1>
         <p>Feeling levels.fyi frontend is underpowered? Quickly search, visualize, and compare TCs with this simple tool!</p>
         <form onSubmit={handleSubmit} className="form">
+          <label>
+            <span>Mode</span>
+            <select value={queryMode} onChange={(event) => handleModeChange(event.target.value)}>
+              {QUERY_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="span-2 token-field">
             <div className="token-label-row">
               <label htmlFor="bearer-token-input">Bearer Token</label>
@@ -769,29 +886,31 @@ function App() {
           </div>
           <div className="company-list-field">
             <span>Companies</span>
-            <div className="company-row preset-row">
-              <select
-                className="preset-select"
-                value={selectedPresetKey}
-                onChange={(event) => setSelectedPresetKey(event.target.value)}
-              >
-                <option value="">Select preset</option>
-                {COMPANY_PRESETS.map((preset) => (
-                  <option key={preset.key} value={preset.key}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="company-row-action"
-                onClick={applyPreset}
-                disabled={!selectedPresetKey}
-              >
-                Apply Preset
-              </button>
-            </div>
-            {formState.companies.map((company, index) => (
+            {isCompareCompaniesMode && (
+              <div className="company-row preset-row">
+                <select
+                  className="preset-select"
+                  value={selectedPresetKey}
+                  onChange={(event) => setSelectedPresetKey(event.target.value)}
+                >
+                  <option value="">Select preset</option>
+                  {COMPANY_PRESETS.map((preset) => (
+                    <option key={preset.key} value={preset.key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="company-row-action"
+                  onClick={applyPreset}
+                  disabled={!selectedPresetKey}
+                >
+                  Apply Preset
+                </button>
+              </div>
+            )}
+            {(isCompareCompaniesMode ? formState.companies : formState.companies.slice(0, 1)).map((company, index) => (
               <div key={company.id} className="company-row">
                 <input
                   list="company-options"
@@ -799,19 +918,23 @@ function App() {
                   onChange={(event) => updateCompany(index, event.target.value)}
                   required
                 />
-                <button
-                  type="button"
-                  className="company-row-action"
-                  onClick={() => removeCompany(index)}
-                  disabled={formState.companies.length <= 1}
-                >
-                  Remove
-                </button>
+                {isCompareCompaniesMode && (
+                  <button
+                    type="button"
+                    className="company-row-action"
+                    onClick={() => removeCompany(index)}
+                    disabled={formState.companies.length <= 1}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
-            <button type="button" className="company-row-action" onClick={addCompany}>
-              Add Company
-            </button>
+            {isCompareCompaniesMode && (
+              <button type="button" className="company-row-action" onClick={addCompany}>
+                Add Company
+              </button>
+            )}
             <datalist id="company-options">
               {COMPANY_OPTIONS.map((company) => (
                 <option key={company} value={company} />
@@ -844,30 +967,63 @@ function App() {
               required
             />
           </label>
-          <label>
-            <span>Location</span>
-            <select
-              value={formState.dmaId}
-              onChange={(event) => setFormState((prev) => ({ ...prev, dmaId: event.target.value }))}
-            >
-              {LOCATION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
+          {isCompareLocationsMode ? (
+            <div className="company-list-field">
+              <span>Locations</span>
+              {formState.locations.map((location, index) => (
+                <div key={location.id} className="company-row">
+                  <select
+                    value={location.dmaId}
+                    onChange={(event) => updateLocation(index, event.target.value)}
+                  >
+                    {LOCATION_OPTIONS.filter((option) => option.value).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="company-row-action"
+                    onClick={() => removeLocation(index)}
+                    disabled={formState.locations.length <= 1}
+                  >
+                    Remove
+                  </button>
+                </div>
               ))}
-            </select>
-          </label>
-          <label>
-            <span>Location Search</span>
-            <input
-              type="text"
-              value={formState.locationSearchText}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, locationSearchText: event.target.value }))
-              }
-              placeholder="e.g. San Jose"
-            />
-          </label>
+              <button type="button" className="company-row-action" onClick={addLocation}>
+                Add Location
+              </button>
+            </div>
+          ) : (
+            <>
+              <label>
+                <span>Location</span>
+                <select
+                  value={formState.dmaId}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, dmaId: event.target.value }))}
+                >
+                  {LOCATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Location Search</span>
+                <input
+                  type="text"
+                  value={formState.locationSearchText}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, locationSearchText: event.target.value }))
+                  }
+                  placeholder="e.g. San Jose"
+                />
+              </label>
+            </>
+          )}
           <label>
             <span>Limit</span>
             <select
@@ -890,7 +1046,7 @@ function App() {
 
       {hasMultipleCompanyResults && mergedMultiCompanyPlot && (
         <section className="panel">
-          <h2>TC Distribution (Combined)</h2>
+          <h2>TC Distribution {isCompareLocationsMode ? "(Combined by Location)" : "(Combined)"}</h2>
           <MultiCompanyBoxPlot plot={mergedMultiCompanyPlot} />
         </section>
       )}
@@ -904,11 +1060,12 @@ function App() {
       {companyResults.length > 0 &&
         companyResults.map((result, resultIndex) => (
         (() => {
-          const companyKey = `${result.companySlug}-${resultIndex}`;
+          const sectionLabel = result.seriesLabel || result.companySlug;
+          const companyKey = `${result.groupKey || result.companySlug}-${resultIndex}`;
           const isCollapsed = Boolean(collapsedCompanies[companyKey]);
           return (
         <section
-          key={`${result.companySlug}-${result.metrics.total}-${result.metrics.count}`}
+          key={`${sectionLabel}-${result.metrics.total}-${result.metrics.count}`}
           className={`company-results-group ${hasMultipleCompanyResults ? "company-results-group-accent" : ""}`}
           style={
             hasMultipleCompanyResults
@@ -924,7 +1081,7 @@ function App() {
                   className="company-collapse-toggle"
                   onClick={() => toggleCompanyCollapse(companyKey)}
                 >
-                  <span>{isCollapsed ? "▸" : "▾"} {result.companySlug}</span>
+                  <span>{isCollapsed ? "▸" : "▾"} {sectionLabel}</span>
                 </button>
               </section>
               {!isCollapsed && (
