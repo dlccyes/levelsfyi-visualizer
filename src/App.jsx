@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import CryptoJS from "crypto-js";
 import pako from "pako";
 import PropTypes from "prop-types";
+import bearerTokenDevtoolsScreenshot from "./assets/bearer-token-devtools.gif";
 
 const LOCATION_OPTIONS = [
   { label: "Any", value: "" },
@@ -591,6 +592,7 @@ function App() {
   const [companyResults, setCompanyResults] = useState([]);
   const [requestError, setRequestError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isBearerTokenHelpOpen, setIsBearerTokenHelpOpen] = useState(false);
   const [actionStatus, setActionStatus] = useState({
     decodedCopy: "idle",
     decodedOpen: "idle",
@@ -885,16 +887,39 @@ function App() {
               <label htmlFor="bearer-token-input">Bearer Token</label>
               <button
                 type="button"
-                className="info-icon-button"
-                aria-label="Bearer token help"
+                className="inline-text-button token-help-toggle"
+                onClick={() => setIsBearerTokenHelpOpen((prev) => !prev)}
+                aria-expanded={isBearerTokenHelpOpen}
+                aria-controls="bearer-token-help"
               >
-                <span aria-hidden="true">i</span>
-                <span className="info-tooltip-content" role="tooltip">
-                  Get this from a real Levels.fyi browser request: open DevTools, inspect a request
-                  to the salary API, and copy the value of the `Authorization` header.
-                </span>
+                {isBearerTokenHelpOpen ? "Collapse" : "How to get this"}
               </button>
             </div>
+            {isBearerTokenHelpOpen && (
+              <div className="token-help-content" id="bearer-token-help">
+                <p>
+                  Open a Levels.fyi company salary page, then open DevTools → Network, click a
+                  request to the salary API, and copy the value of the <code>Authorization</code>{" "}
+                  request header.
+                </p>
+                <p>
+                  Example page:{" "}
+                  <a
+                    href="https://www.levels.fyi/companies/google/salaries/software-engineer?country=254"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    https://www.levels.fyi/companies/google/salaries/software-engineer?country=254
+                  </a>
+                </p>
+                <img
+                  className="token-help-image"
+                  src={bearerTokenDevtoolsScreenshot}
+                  alt="Chrome DevTools Network tab highlighting the Authorization header value (bearer token)."
+                  loading="lazy"
+                />
+              </div>
+            )}
             <input
               id="bearer-token-input"
               className="input-token"

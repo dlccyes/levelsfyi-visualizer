@@ -133,14 +133,61 @@ body {
 }
 
 .token-label-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
+  width: 100%;
+  flex-wrap: wrap;
 }
 
 .token-label-row label {
   display: inline;
+}
+
+.inline-text-button {
+  all: unset;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.inline-text-button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.token-help-content {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.token-help-content p {
+  margin: 0 0 8px;
+}
+
+.token-help-content p:last-child {
+  margin-bottom: 0;
+}
+
+.token-help-image {
+  display: block;
+  width: min(820px, 100%);
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
 }
 
 .input-token {
@@ -159,57 +206,9 @@ label {
   min-width: 0;
 }
 
-.info-icon-button {
-  all: unset;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 16px;
-  width: 16px;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: 1px solid #94a3b8;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: help;
-  background: #f8fafc;
-  line-height: 1;
-}
-
-.info-tooltip-content {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 8px);
-  width: min(360px, 85vw);
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.35;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-  pointer-events: none;
-  z-index: 20;
-}
-
-.info-icon-button:hover .info-tooltip-content,
-.info-icon-button:focus-visible .info-tooltip-content {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
 input,
 select,
-button:not(.info-icon-button):not(.table-sort-button):not(.company-collapse-toggle) {
+button:not(.table-sort-button):not(.company-collapse-toggle):not(.inline-text-button) {
   width: 100%;
   height: 40px;
   border-radius: 8px;
@@ -219,7 +218,7 @@ button:not(.info-icon-button):not(.table-sort-button):not(.company-collapse-togg
   min-width: 0;
 }
 
-button:not(.info-icon-button):not(.table-sort-button):not(.company-collapse-toggle) {
+button:not(.table-sort-button):not(.company-collapse-toggle):not(.inline-text-button) {
   background: #111827;
   color: #fff;
   cursor: pointer;
@@ -234,7 +233,7 @@ button:not(.info-icon-button):not(.table-sort-button):not(.company-collapse-togg
   border: 1px solid #93c5fd;
 }
 
-button:not(.info-icon-button):not(.table-sort-button):disabled {
+button:not(.table-sort-button):not(.company-collapse-toggle):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
