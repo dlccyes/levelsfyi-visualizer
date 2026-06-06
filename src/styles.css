@@ -404,6 +404,18 @@ pre {
   fill: rgba(74, 174, 97, 0.88);
 }
 
+.plot-scatter-dot {
+  fill: rgba(37, 99, 235, 0.82);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.plot-regression-line {
+  stroke: #dc2626;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
 .plot-dot-red {
   fill: rgba(220, 38, 38, 0.85);
 }
@@ -449,6 +461,47 @@ pre {
   fill: #000;
   font-size: 11px;
   text-anchor: middle;
+}
+
+.plot-y-tick-label {
+  fill: #000;
+  font-size: 11px;
+  text-anchor: end;
+}
+
+.plot-axis-label {
+  fill: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.regression-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.regression-stats div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.regression-stats dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.regression-stats dd {
+  margin: 2px 0 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .plot-stat-label {

@@ -160,6 +160,19 @@ function formatUSDCompact(value) {
   return `$${Math.round(n / 1000).toLocaleString("en-US")}K`;
 }
 
+function formatSignedUSDCompact(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${formatUSDCompact(n)}`;
+}
+
+function formatDecimal(value, digits = 3) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  return n.toFixed(digits);
+}
+
 function shouldUseFirstYearTotalCompensation(row, options = {}) {
   const firstYearTotalCompensation = Number(row.firstYearTotalCompensation);
   return (
@@ -369,6 +382,167 @@ function buildTcDistributionPlot(tcValues) {
   };
 }
 
+function formatDateTick(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "2-digit",
+  });
+}
+
+function buildTcDateScatterPlot(rows, options = {}) {
+  const points = rows
+    .map((row) => ({
+      dateValue: Date.parse(row.offerDate || ""),
+      totalCompensationValue: getEffectiveTotalCompensation(row, options),
+    }))
+    .filter(
+      (point) =>
+        Number.isFinite(point.dateValue) &&
+        Number.isFinite(point.totalCompensationValue) &&
+        point.totalCompensationValue > 0,
+    )
+    .sort((a, b) => a.dateValue - b.dateValue);
+
+  const width = 860;
+  const height = 360;
+  const marginLeft = 68;
+  const marginRight = 34;
+  const marginTop = 30;
+  const marginBottom = 72;
+  const plotWidth = width - marginLeft - marginRight;
+  const plotHeight = height - marginTop - marginBottom;
+  const axisY = height - marginBottom;
+
+  if (!points.length) {
+    return { width, height, hasData: false };
+  }
+
+  const minDate = points[0].dateValue;
+  const maxDate = points.at(-1).dateValue;
+  const tcValues = points.map((point) => point.totalCompensationValue).sort((a, b) => a - b);
+  const minTC = tcValues[0];
+  const maxTC = tcValues.at(-1);
+
+  const dateRange = Math.max(maxDate - minDate, 1);
+  const tcRange = Math.max(maxTC - minTC, 1);
+  const datePadding = Math.max(dateRange * 0.04, 24 * 60 * 60 * 1000);
+  const tcPadding = Math.max(tcRange * 0.12, 8000);
+  const domainMinDate = minDate - datePadding;
+  const domainMaxDate = maxDate + datePadding;
+  const domainDateRange = Math.max(domainMaxDate - domainMinDate, 1);
+  const domainMinTC = Math.max(0, minTC - tcPadding);
+  const domainMaxTC = maxTC + tcPadding;
+  const domainTCRange = Math.max(domainMaxTC - domainMinTC, 1);
+
+  function xScale(value) {
+    return marginLeft + ((value - domainMinDate) / domainDateRange) * plotWidth;
+  }
+
+  function yScale(value) {
+    return marginTop + (1 - (value - domainMinTC) / domainTCRange) * plotHeight;
+  }
+
+  const scaledPoints = points.map((point) => ({
+    cx: xScale(point.dateValue),
+    cy: yScale(point.totalCompensationValue),
+    dateLabel: formatDateTick(point.dateValue),
+    tcLabel: formatUSDCompact(point.totalCompensationValue),
+  }));
+
+  const dateTickCount = 5;
+  const dateTicks = Array.from({ length: dateTickCount }, (_, index) => {
+    const t = dateTickCount === 1 ? 0 : index / (dateTickCount - 1);
+    const value = domainMinDate + domainDateRange * t;
+    return {
+      x: xScale(value),
+      label: formatDateTick(value),
+    };
+  });
+
+  const tcTickCount = 5;
+  const tcTicks = Array.from({ length: tcTickCount }, (_, index) => {
+    const t = tcTickCount === 1 ? 0 : index / (tcTickCount - 1);
+    const rawValue = domainMinTC + domainTCRange * t;
+    const roundedValue = Math.round(rawValue / 1000) * 1000;
+    return {
+      y: yScale(rawValue),
+      label: formatUSDCompact(roundedValue),
+    };
+  });
+
+  let regressionLine = null;
+  let regressionStats = null;
+  if (points.length >= 2) {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const regressionPoints = points.map((point) => ({
+      x: (point.dateValue - minDate) / dayMs,
+      y: point.totalCompensationValue,
+    }));
+    const meanX = regressionPoints.reduce((sum, point) => sum + point.x, 0) / regressionPoints.length;
+    const meanY = points.reduce((sum, point) => sum + point.totalCompensationValue, 0) / points.length;
+    const numerator = regressionPoints.reduce(
+      (sum, point) => sum + (point.x - meanX) * (point.y - meanY),
+      0,
+    );
+    const denominator = regressionPoints.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0);
+
+    if (denominator > 0) {
+      const slope = numerator / denominator;
+      const intercept = meanY - slope * meanX;
+      const endX = (maxDate - minDate) / dayMs;
+      const startY = intercept;
+      const endY = intercept + slope * endX;
+      const residualSumSquares = regressionPoints.reduce((sum, point) => {
+        const predicted = intercept + slope * point.x;
+        return sum + (point.y - predicted) ** 2;
+      }, 0);
+      const totalSumSquares = points.reduce(
+        (sum, point) => sum + (point.totalCompensationValue - meanY) ** 2,
+        0,
+      );
+      const rSquared = totalSumSquares > 0 ? 1 - residualSumSquares / totalSumSquares : 1;
+      const monthMs = dayMs * 30.4375;
+      const yearMs = dayMs * 365.25;
+      regressionLine = {
+        x1: xScale(minDate),
+        y1: yScale(startY),
+        x2: xScale(maxDate),
+        y2: yScale(endY),
+      };
+      regressionStats = {
+        pointsCount: points.length,
+        rSquared,
+        slopePerDay: slope,
+        slopePerMonth: slope * (monthMs / dayMs),
+        slopePerYear: slope * (yearMs / dayMs),
+        intercept,
+      };
+    }
+  }
+
+  return {
+    hasData: true,
+    width,
+    height,
+    marginTop,
+    marginLeft,
+    marginRight,
+    axisY,
+    axisStartX: marginLeft,
+    axisEndX: width - marginRight,
+    yAxisTop: marginTop,
+    yAxisBottom: axisY,
+    points: scaledPoints,
+    dateTicks,
+    tcTicks,
+    regressionLine,
+    regressionStats,
+  };
+}
+
 function hexToRgba(hex, alpha) {
   const normalized = hex.replace("#", "");
   if (normalized.length !== 6) return `rgba(0, 0, 0, ${alpha})`;
@@ -550,6 +724,7 @@ function computeCompanyMetrics(decodedResponse, options = {}) {
     ethnicitySummary: summarizeField(rows, "ethnicity", options),
     educationSummary: summarizeField(rows, "education", options),
     plot: buildTcDistributionPlot(tcValues),
+    datePlot: buildTcDateScatterPlot(rows, options),
     total: decodedResponse.total,
   };
 }
@@ -1148,10 +1323,16 @@ function App() {
         </section>
       )}
       {isSingleCompanyResult && singleCompanyResult && (
-        <section className="panel">
-          <h2>TC Distribution</h2>
-          <BoxPlot plot={singleCompanyResult.metrics.plot} />
-        </section>
+        <>
+          <section className="panel">
+            <h2>TC Distribution</h2>
+            <BoxPlot plot={singleCompanyResult.metrics.plot} />
+          </section>
+          <section className="panel">
+            <h2>TC vs. Date</h2>
+            <TcDateScatterPlot plot={singleCompanyResult.metrics.datePlot} />
+          </section>
+        </>
       )}
 
       {companyResults.length > 0 &&
@@ -1326,8 +1507,8 @@ function BoxPlot({ plot }) {
           y2={plot.boxBottomY}
         />
 
-        {plot.dots.map((dot) => (
-          <circle key={`${dot.cx}-${dot.cy}`} className="plot-dot" cx={dot.cx} cy={dot.cy} r="10" />
+        {plot.dots.map((dot, index) => (
+          <circle key={`${dot.cx}-${dot.cy}-${index}`} className="plot-dot" cx={dot.cx} cy={dot.cy} r="10" />
         ))}
 
         <text className="plot-stat-value" x={plot.q1X} y="36">
@@ -1351,6 +1532,107 @@ function BoxPlot({ plot }) {
         </text>
       </svg>
     </div>
+  );
+}
+
+function TcDateScatterPlot({ plot }) {
+  if (!plot.hasData) {
+    return <p className="warning">No dated TC data available for plot.</p>;
+  }
+
+  return (
+    <>
+      <div className="plot-shell">
+        <svg viewBox={`0 0 ${plot.width} ${plot.height}`} preserveAspectRatio="xMidYMid meet">
+          {plot.dateTicks.map((tick) => (
+            <g key={`date-tick-${tick.x}`}>
+              <line className="plot-grid" x1={tick.x} y1={plot.marginTop} x2={tick.x} y2={plot.axisY} />
+              <text className="plot-tick-label" x={tick.x} y={plot.axisY + 26}>
+                {tick.label}
+              </text>
+            </g>
+          ))}
+
+          {plot.tcTicks.map((tick) => (
+            <g key={`tc-tick-${tick.y}`}>
+              <line className="plot-grid" x1={plot.axisStartX} y1={tick.y} x2={plot.axisEndX} y2={tick.y} />
+              <text className="plot-y-tick-label" x={plot.axisStartX - 12} y={tick.y + 4}>
+                {tick.label}
+              </text>
+            </g>
+          ))}
+
+          <line className="plot-axis" x1={plot.axisStartX} y1={plot.axisY} x2={plot.axisEndX} y2={plot.axisY} />
+          <line
+            className="plot-axis"
+            x1={plot.axisStartX}
+            y1={plot.yAxisTop}
+            x2={plot.axisStartX}
+            y2={plot.yAxisBottom}
+          />
+
+          {plot.regressionLine && (
+            <line
+              className="plot-regression-line"
+              x1={plot.regressionLine.x1}
+              y1={plot.regressionLine.y1}
+              x2={plot.regressionLine.x2}
+              y2={plot.regressionLine.y2}
+            />
+          )}
+
+          {plot.points.map((point, index) => (
+            <circle
+              key={`${point.cx}-${point.cy}-${index}`}
+              className="plot-scatter-dot"
+              cx={point.cx}
+              cy={point.cy}
+              r="7"
+            >
+              <title>
+                {point.dateLabel}: {point.tcLabel}
+              </title>
+            </circle>
+          ))}
+
+          <text className="plot-axis-label" x={(plot.axisStartX + plot.axisEndX) / 2} y={plot.height - 18}>
+            Offer Date
+          </text>
+          <text
+            className="plot-axis-label"
+            x={18}
+            y={(plot.yAxisTop + plot.yAxisBottom) / 2}
+            transform={`rotate(-90 18 ${(plot.yAxisTop + plot.yAxisBottom) / 2})`}
+          >
+            TC
+          </text>
+        </svg>
+      </div>
+      {plot.regressionStats && (
+        <dl className="regression-stats">
+          <div>
+            <dt>n</dt>
+            <dd>{formatInt(plot.regressionStats.pointsCount)}</dd>
+          </div>
+          <div>
+            <dt>R²</dt>
+            <dd>{formatDecimal(plot.regressionStats.rSquared)}</dd>
+          </div>
+          <div>
+            <dt>Slope / mo</dt>
+            <dd>{formatSignedUSDCompact(plot.regressionStats.slopePerMonth)}</dd>
+          </div>
+          <div>
+            <dt>Slope / yr</dt>
+            <dd>{formatSignedUSDCompact(plot.regressionStats.slopePerYear)}</dd>
+          </div>
+          <div>
+            <dt>Intercept @ start</dt>
+            <dd>{formatUSDCompact(plot.regressionStats.intercept)}</dd>
+          </div>
+        </dl>
+      )}
+    </>
   );
 }
 
@@ -1691,6 +1973,54 @@ BoxPlot.propTypes = {
         cy: PropTypes.number.isRequired,
       }),
     ),
+  }).isRequired,
+};
+
+TcDateScatterPlot.propTypes = {
+  plot: PropTypes.shape({
+    hasData: PropTypes.bool.isRequired,
+    width: PropTypes.number.isRequired,
+    height: PropTypes.number.isRequired,
+    marginTop: PropTypes.number,
+    axisY: PropTypes.number,
+    axisStartX: PropTypes.number,
+    axisEndX: PropTypes.number,
+    yAxisTop: PropTypes.number,
+    yAxisBottom: PropTypes.number,
+    dateTicks: PropTypes.arrayOf(
+      PropTypes.shape({
+        x: PropTypes.number.isRequired,
+        label: PropTypes.string.isRequired,
+      }),
+    ),
+    tcTicks: PropTypes.arrayOf(
+      PropTypes.shape({
+        y: PropTypes.number.isRequired,
+        label: PropTypes.string.isRequired,
+      }),
+    ),
+    points: PropTypes.arrayOf(
+      PropTypes.shape({
+        cx: PropTypes.number.isRequired,
+        cy: PropTypes.number.isRequired,
+        dateLabel: PropTypes.string.isRequired,
+        tcLabel: PropTypes.string.isRequired,
+      }),
+    ),
+    regressionLine: PropTypes.shape({
+      x1: PropTypes.number.isRequired,
+      y1: PropTypes.number.isRequired,
+      x2: PropTypes.number.isRequired,
+      y2: PropTypes.number.isRequired,
+    }),
+    regressionStats: PropTypes.shape({
+      pointsCount: PropTypes.number.isRequired,
+      rSquared: PropTypes.number.isRequired,
+      slopePerDay: PropTypes.number.isRequired,
+      slopePerMonth: PropTypes.number.isRequired,
+      slopePerYear: PropTypes.number.isRequired,
+      intercept: PropTypes.number.isRequired,
+    }),
   }).isRequired,
 };
 
