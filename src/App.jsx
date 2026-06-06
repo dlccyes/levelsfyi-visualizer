@@ -160,12 +160,29 @@ function formatUSDCompact(value) {
   return `$${Math.round(n / 1000).toLocaleString("en-US")}K`;
 }
 
-function summarizeField(rows, field, limit = 8) {
+function shouldUseFirstYearTotalCompensation(row, options = {}) {
+  const firstYearTotalCompensation = Number(row.firstYearTotalCompensation);
+  return (
+    options.showFirstYearTcForOffers &&
+    row.compPerspective === "offer" &&
+    Number.isFinite(firstYearTotalCompensation) &&
+    firstYearTotalCompensation > 0
+  );
+}
+
+function getEffectiveTotalCompensation(row, options = {}) {
+  if (shouldUseFirstYearTotalCompensation(row, options)) {
+    return Number(row.firstYearTotalCompensation);
+  }
+  return Number(row.totalCompensation);
+}
+
+function summarizeField(rows, field, options = {}, limit = 8) {
   const statsByValue = {};
   rows.forEach((row) => {
     const raw = row[field];
     const key = raw == null || raw === "" ? "Unknown" : String(raw);
-    const totalCompensationValue = Number(row.totalCompensation);
+    const totalCompensationValue = getEffectiveTotalCompensation(row, options);
     if (!statsByValue[key]) {
       statsByValue[key] = {
         count: 0,
@@ -243,10 +260,11 @@ function buildHeaders(token) {
   };
 }
 
-function buildSampleRows(rows) {
+function buildSampleRows(rows, options = {}) {
   return rows.map((row, index) => {
     const parsedOfferDate = Date.parse(row.offerDate || "");
     const hasValidOfferDate = Number.isFinite(parsedOfferDate);
+    const totalCompensationValue = getEffectiveTotalCompensation(row, options);
 
     return {
       id: `${row.company || "unknown"}-${row.level || "unknown"}-${row.location || "unknown"}-${index}`,
@@ -254,9 +272,9 @@ function buildSampleRows(rows) {
       level: row.level || "",
       yoe: Number(row.yearsOfExperience),
       location: row.location || "",
-      totalCompensationValue: Number(row.totalCompensation),
+      totalCompensationValue,
       baseSalaryValue: Number(row.baseSalary),
-      totalCompensation: formatUSD(row.totalCompensation),
+      totalCompensation: formatUSD(totalCompensationValue),
       baseSalary: formatUSD(row.baseSalary),
       offerDate: hasValidOfferDate ? new Date(parsedOfferDate).toLocaleString() : "N/A",
       offerDateValue: hasValidOfferDate ? parsedOfferDate : Number.NEGATIVE_INFINITY,
@@ -499,10 +517,10 @@ function getLocationLabelByValue(locationValue) {
   return matchedOption?.label || "Unknown";
 }
 
-function computeCompanyMetrics(decodedResponse) {
+function computeCompanyMetrics(decodedResponse, options = {}) {
   const rows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
   const tcValues = rows
-    .map((r) => Number(r.totalCompensation))
+    .map((r) => getEffectiveTotalCompensation(r, options))
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
@@ -526,17 +544,17 @@ function computeCompanyMetrics(decodedResponse) {
     maxTC: count ? tcValues[count - 1] : 0,
     minYoe: yoeValues.length ? yoeValues[0] : null,
     maxYoe: yoeValues.length ? yoeValues[yoeValues.length - 1] : null,
-    levelSummary: summarizeField(rows, "level"),
-    locationSummary: summarizeField(rows, "location"),
-    genderSummary: summarizeField(rows, "gender"),
-    ethnicitySummary: summarizeField(rows, "ethnicity"),
-    educationSummary: summarizeField(rows, "education"),
+    levelSummary: summarizeField(rows, "level", options),
+    locationSummary: summarizeField(rows, "location", options),
+    genderSummary: summarizeField(rows, "gender", options),
+    ethnicitySummary: summarizeField(rows, "ethnicity", options),
+    educationSummary: summarizeField(rows, "education", options),
     plot: buildTcDistributionPlot(tcValues),
     total: decodedResponse.total,
   };
 }
 
-async function fetchCompanyResult(formState, bearerToken, selectedLimit, companySlug) {
+async function fetchCompanyResult(formState, bearerToken, selectedLimit, companySlug, metricsOptions = {}) {
   const rawPages = [];
   const decodedPages = [];
   let offset = 0;
@@ -571,7 +589,7 @@ async function fetchCompanyResult(formState, bearerToken, selectedLimit, company
   const mergedDecodedResponse = mergeDecodedPages(decodedPages, selectedLimit);
   return {
     companySlug,
-    metrics: computeCompanyMetrics(mergedDecodedResponse),
+    metrics: computeCompanyMetrics(mergedDecodedResponse, metricsOptions),
     rawResponse: rawPages.length === 1 ? rawPages[0] : rawPages,
     decodedResponse: mergedDecodedResponse,
   };
@@ -587,6 +605,7 @@ function App() {
     dmaId: "807",
     locationSearchText: "",
     limit: "50",
+    showFirstYearTcForOffers: true,
   });
   const [queryMode, setQueryMode] = useState("search");
   const [companyResults, setCompanyResults] = useState([]);
@@ -619,11 +638,13 @@ function App() {
 
   const sortedSampleRows = useMemo(() => {
     if (!singleCompanyResult) return [];
-    const rows = buildSampleRows(singleCompanyResult.metrics.rows);
+    const rows = buildSampleRows(singleCompanyResult.metrics.rows, {
+      showFirstYearTcForOffers: formState.showFirstYearTcForOffers,
+    });
     if (!sampleSort.field) return rows;
     rows.sort((a, b) => compareValues(a[sampleSort.field], b[sampleSort.field], sampleSort.direction));
     return rows;
-  }, [singleCompanyResult, sampleSort]);
+  }, [singleCompanyResult, sampleSort, formState.showFirstYearTcForOffers]);
 
   function toggleSampleSort(field) {
     setSampleSort((prev) => {
@@ -635,6 +656,17 @@ function App() {
       }
       return { field, direction: "desc" };
     });
+  }
+
+  function updateShowFirstYearTcForOffers(checked) {
+    const metricsOptions = { showFirstYearTcForOffers: checked };
+    setFormState((prev) => ({ ...prev, showFirstYearTcForOffers: checked }));
+    setCompanyResults((prev) =>
+      prev.map((result) => ({
+        ...result,
+        metrics: computeCompanyMetrics(result.decodedResponse, metricsOptions),
+      })),
+    );
   }
 
   function setTransientActionStatus(key, value) {
@@ -761,6 +793,9 @@ function App() {
       }
 
       const selectedLimit = Number(formState.limit);
+      const metricsOptions = {
+        showFirstYearTcForOffers: formState.showFirstYearTcForOffers,
+      };
       const companySlugs = formState.companies
         .map((company) => company.value.trim().toLowerCase().replaceAll(/\s+/g, "-"))
         .filter(Boolean);
@@ -790,6 +825,7 @@ function App() {
             bearerToken,
             selectedLimit,
             companySlug,
+            metricsOptions,
           );
           nextCompanyResults.push({
             ...companyResult,
@@ -804,6 +840,7 @@ function App() {
             bearerToken,
             selectedLimit,
             companySlug,
+            metricsOptions,
           );
           nextCompanyResults.push({
             ...companyResult,
@@ -817,6 +854,7 @@ function App() {
           bearerToken,
           selectedLimit,
           companySlugs[0],
+          metricsOptions,
         );
         nextCompanyResults.push({
           ...companyResult,
@@ -1085,6 +1123,16 @@ function App() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="toggle-field">
+            <input
+              className="toggle-input"
+              type="checkbox"
+              role="switch"
+              checked={formState.showFirstYearTcForOffers}
+              onChange={(event) => updateShowFirstYearTcForOffers(event.target.checked)}
+            />
+            <span>Show year 1 TC for new offers</span>
           </label>
           <button type="submit" disabled={isLoading}>
             {isLoading ? "Loading..." : "Fetch and Decode"}
