@@ -692,7 +692,10 @@ function getLocationLabelByValue(locationValue) {
 }
 
 function computeCompanyMetrics(decodedResponse, options = {}) {
-  const rows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
+  const allRows = Array.isArray(decodedResponse.rows) ? decodedResponse.rows : [];
+  const rows = options.onlyIncludeNewOffers
+    ? allRows.filter((row) => row.compPerspective === "offer")
+    : allRows;
   const tcValues = rows
     .map((r) => getEffectiveTotalCompensation(r, options))
     .filter((v) => Number.isFinite(v) && v > 0)
@@ -781,6 +784,7 @@ function App() {
     locationSearchText: "",
     limit: "50",
     showFirstYearTcForOffers: true,
+    onlyIncludeNewOffers: false,
   });
   const [queryMode, setQueryMode] = useState("search");
   const [companyResults, setCompanyResults] = useState([]);
@@ -833,9 +837,13 @@ function App() {
     });
   }
 
-  function updateShowFirstYearTcForOffers(checked) {
-    const metricsOptions = { showFirstYearTcForOffers: checked };
-    setFormState((prev) => ({ ...prev, showFirstYearTcForOffers: checked }));
+  function updateMetricsOption(optionName, checked) {
+    const metricsOptions = {
+      showFirstYearTcForOffers: formState.showFirstYearTcForOffers,
+      onlyIncludeNewOffers: formState.onlyIncludeNewOffers,
+      [optionName]: checked,
+    };
+    setFormState((prev) => ({ ...prev, [optionName]: checked }));
     setCompanyResults((prev) =>
       prev.map((result) => ({
         ...result,
@@ -970,6 +978,7 @@ function App() {
       const selectedLimit = Number(formState.limit);
       const metricsOptions = {
         showFirstYearTcForOffers: formState.showFirstYearTcForOffers,
+        onlyIncludeNewOffers: formState.onlyIncludeNewOffers,
       };
       const companySlugs = formState.companies
         .map((company) => company.value.trim().toLowerCase().replaceAll(/\s+/g, "-"))
@@ -1305,9 +1314,19 @@ function App() {
               type="checkbox"
               role="switch"
               checked={formState.showFirstYearTcForOffers}
-              onChange={(event) => updateShowFirstYearTcForOffers(event.target.checked)}
+              onChange={(event) => updateMetricsOption("showFirstYearTcForOffers", event.target.checked)}
             />
             <span>Show year 1 TC for new offers</span>
+          </label>
+          <label className="toggle-field">
+            <input
+              className="toggle-input"
+              type="checkbox"
+              role="switch"
+              checked={formState.onlyIncludeNewOffers}
+              onChange={(event) => updateMetricsOption("onlyIncludeNewOffers", event.target.checked)}
+            />
+            <span>Only include new offers</span>
           </label>
           <button type="submit" disabled={isLoading}>
             {isLoading ? "Loading..." : "Fetch and Decode"}
